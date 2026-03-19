@@ -8,6 +8,7 @@
 #include "display/framebuffer.h"
 #include "display/graphics.h"
 #include "kernel.h"
+#include <stdlib.h>
 #include <string.h>
 
 /* Compositor state */
@@ -33,6 +34,14 @@ void compositor_init(int width, int height) {
     compositor.output_stride = width;
     compositor.needs_redraw = true;
     compositor.initialized = true;
+    
+    /* Allocate output buffer */
+    compositor.output_buffer = (uint32_t*)malloc(width * height * sizeof(uint32_t));
+    if (!compositor.output_buffer) {
+        kprintf("[COMP] ERROR: Failed to allocate output buffer!\n");
+        return;
+    }
+    memset(compositor.output_buffer, 0, width * height * sizeof(uint32_t));
     
     kprintf("[COMP] Compositor initialized (%dx%d)\n", width, height);
 }

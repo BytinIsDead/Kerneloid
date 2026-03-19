@@ -97,4 +97,11 @@ static inline void invlpg(void* addr) {
     __asm__ volatile ("invlpg (%0)" : : "r"(addr) : "memory");
 }
 
+/* Kernel function declarations */
+void kprintf(const char* fmt, ...);
+void kputchar(char c);
+void* kmalloc(u32 size);
+void kfree(void* ptr);
+void heap_init(void* start, u32 size);
+
 #endif /* KERNELOID_KERNEL_H */

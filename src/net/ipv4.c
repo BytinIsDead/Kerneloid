@@ -161,7 +161,7 @@ int ipv4_send(net_interface_t* iface, ipv4_addr_t* src, ipv4_addr_t* dst,
         /* Try ARP lookup */
         if (!arp_lookup(dst, &dst_mac)) {
             /* Send ARP request */
-            arp_send_request(iface, dst);
+            arp_send_request(iface, *dst);
             return -1;
         }
     }

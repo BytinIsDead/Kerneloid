@@ -202,8 +202,8 @@ char* utils_strncpy(char* dest, const char* src, size_t n) {
 /*
  * Get string length
  */
-size_t utils_strlen(const char* s) {
-    size_t len = 0;
+int utils_strlen(const char* s) {
+    int len = 0;
     while (*s++) len++;
     return len;
 }

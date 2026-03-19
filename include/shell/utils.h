@@ -7,6 +7,7 @@
 #define KERNELOID_UTILS_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /*
  * Print character

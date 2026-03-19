@@ -7,6 +7,7 @@
 #define KERNELOID_TRANSPORT_H
 
 #include "net/nic.h"
+#include "net/ipv4.h"
 #include <stdint.h>
 #include <stdbool.h>
 

@@ -6,6 +6,7 @@
 #include "net/nic.h"
 #include "kernel.h"
 #include <string.h>
+#include <stdio.h>
 
 /* Network interfaces */
 #define MAX_INTERFACES 4

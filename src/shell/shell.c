@@ -99,7 +99,8 @@ int shell_parse(const char* cmdline, char* args[]) {
         
         if (*p) {
             /* Null terminate and move to next */
-            *((char*)p)++ = '\0';
+            *p = '\0';
+            p++;
             
             /* Skip whitespace */
             while (*p == ' ' || *p == '\t') p++;

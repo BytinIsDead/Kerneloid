@@ -84,7 +84,7 @@ int shell_parse(const char* cmdline, char* args[]) {
     if (!cmdline || !args) return 0;
     
     int argc = 0;
-    const char* p = cmdline;
+    char* p = (char*)cmdline;
     char* arg = (char*)args;
     
     /* Skip leading whitespace */
@@ -92,7 +92,7 @@ int shell_parse(const char* cmdline, char* args[]) {
     
     while (*p && argc < MAX_ARGS - 1) {
         /* Start of argument */
-        args[argc++] = (char*)p;
+        args[argc++] = p;
         
         /* Find end of argument */
         while (*p && *p != ' ' && *p != '\t') p++;

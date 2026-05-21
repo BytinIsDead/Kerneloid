@@ -96,4 +96,8 @@ format-unnamedfs:
 	./scripts/install.sh $(BUILDDIR)/disk.img
 
 # Phony targets
-.PHONY: all clean run run-serial debug install format-unnamedfs
+.PHONY: all clean run run-serial debug install format-unnamedfs build iso
+
+# Alias targets
+build: $(ISO)
+iso: $(ISO)

@@ -1,8 +1,8 @@
 # Tinx Kernel Makefile
 
-# Compiler settings
-CC = i686-elf-gcc
-LD = i686-elf-ld
+# Compiler settings (use native gcc with -m32 for 32-bit output)
+CC = gcc
+LD = ld
 ASM = nasm
 
 # Directories

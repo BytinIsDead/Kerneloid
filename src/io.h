@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+/* VGA text mode I/O functions */
+void io_init(void);
+void io_putchar(char c);
+void io_print(const char* str);
+void io_println(const char* str);
+
 /* Port I/O functions */
 static inline void outb(uint16_t port, uint8_t value) {
     asm volatile ("outb %0, %1" : : "a"(value), "Nd"(port));

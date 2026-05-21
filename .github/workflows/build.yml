@@ -48,3 +48,4 @@ jobs:
           build/tinx.bin
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        retention-days: 1000

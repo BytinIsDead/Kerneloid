@@ -63,9 +63,7 @@ $(ISO): $(TARGET)
 	echo '    multiboot /boot/tinx.bin' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '    boot' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '}' >> $(ISODIR)/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) $(ISODIR) 2>/dev/null || \
-		grub2-mkrescue -o $(ISO) $(ISODIR) 2>/dev/null || \
-		echo "Warning: grub-mkrescue not found, ISO creation may fail"
+	grub-mkrescue -o $(ISO) $(ISODIR)
 
 # Run in QEMU
 run: $(ISO)

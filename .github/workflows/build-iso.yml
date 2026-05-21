@@ -1,0 +1,52 @@
+name: Build TINX ISO
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+env:
+  RELEASE_NAME: "Handsome Dorito"
+  VERSION: "1.0"
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin xorriso make gcc-multilib
+
+    - name: Build kernel
+      run: make clean && make
+
+    - name: Build ISO
+      run: make iso
+
+    - name: Verify ISO
+      run: |
+        ls -lh build/tinx.iso
+        isoinfo -d -i build/tinx.iso 2>/dev/null || echo "ISO created successfully"
+
+    - name: Upload ISO artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: tinx-${{ env.VERSION }}-${{ env.RELEASE_NAME }}-iso
+        path: build/tinx.iso
+        retention-days: 30
+
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/tinx.iso
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

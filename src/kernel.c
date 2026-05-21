@@ -241,7 +241,7 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     
     /* Print welcome message */
     io_println("========================================");
-    io_println("       Tinx Kernel v0.1.0");
+    io_println("       TINX v1.0 \"Handsome Dorito\"");
     io_println("========================================");
     io_println("");
     io_println("Booting...");

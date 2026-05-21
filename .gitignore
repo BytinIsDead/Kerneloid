@@ -3,6 +3,5 @@
 *.o
 *.obj
 *.bin
-*.iso
 build/
 ```

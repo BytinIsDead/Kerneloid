@@ -87,8 +87,9 @@ isr%1:
 
 %macro ISR_ERRCODE 1
 isr%1:
-    push dword %1         ; Push interrupt number (error code already on stack)
-    jmp isr_common_stub
+    ; Error code is already on stack from CPU, we need to push interrupt number AFTER it
+    push dword %1         ; Push interrupt number after error code
+    jmp isr_common_stub_errcode
 %endmacro
 
 ISR_NOERRCODE 0
@@ -143,5 +144,25 @@ isr_common_stub:
     mov fs, ax
     mov gs, ax
     popa
-    add esp, 8
+    add esp, 8          ; Remove error code (dummy) and interrupt number
+    iret
+
+isr_common_stub_errcode:
+    pusha
+    mov ax, ds
+    push eax
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    cld
+    call isr_handler
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    popa
+    add esp, 8          ; Remove real error code and interrupt number
     iret

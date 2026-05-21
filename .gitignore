@@ -1,4 +1,8 @@
 ```
-# CI/CD
-.github/
+# Compiled and build artifacts
+*.o
+*.obj
+*.bin
+*.iso
+build/
 ```

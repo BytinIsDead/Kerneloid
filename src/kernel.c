@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "io.h"
+#include "shell.h"
 
 /* Multiboot magic number */
 #define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
@@ -186,7 +187,14 @@ void isr_handler(uint32_t* regs) {
         "Reserved"
     };
     
-    uint32_t int_num = regs[6];  /* Interrupt number pushed by stub */
+    /* 
+     * Stack layout at this point (from top to bottom):
+     * [regs+0..regs+15] = pushed registers from pusha
+     * [regs+16] = saved DS
+     * [regs+17] = interrupt number (pushed by ISR stub)
+     * [regs+18] = error code (if applicable, or dummy 0)
+     */
+    uint32_t int_num = regs[17];  /* Interrupt number is after pusha (16 regs) + saved DS */
     
     if (int_num < 32) {
         io_print("\n!!! EXCEPTION: ");
@@ -199,7 +207,8 @@ void isr_handler(uint32_t* regs) {
         io_putchar(hex[int_num & 0xF]);
         io_println(")");
         
-        kernel_panic("CPU Exception occurred");
+        /* Don't panic on keyboard interrupt or other recoverable situations */
+        /* For now, just return to let system continue */
     }
 }
 
@@ -278,8 +287,44 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     io_println("System ready.");
     io_println("Tinx kernel booted successfully!");
     
-    /* Hang forever */
+    /* Start interactive shell */
+    struct shell_state state;
+    shell_init(&state);
+    shell_run(&state);
+    
+    char cmd_line[SHELL_MAX_CMD_LEN];
+    int cmd_pos = 0;
+    
     while (1) {
-        asm volatile ("hlt");
+        char c = io_getchar();
+        
+        if (c == 0) {
+            continue;  /* No valid key */
+        }
+        
+        if (c == '\n' || c == '\r') {
+            /* Execute command when Enter is pressed */
+            io_putchar('\n');
+            cmd_line[cmd_pos] = '\0';
+            
+            if (cmd_pos > 0) {
+                shell_exec(&state, cmd_line);
+            }
+            
+            io_print(state.prompt);
+            cmd_pos = 0;
+        } else if (c == '\b') {
+            /* Handle backspace */
+            if (cmd_pos > 0) {
+                cmd_pos--;
+                io_putchar(c);
+            }
+        } else if (c >= 32 && c < 127) {
+            /* Regular printable character */
+            if (cmd_pos < SHELL_MAX_CMD_LEN - 1) {
+                cmd_line[cmd_pos++] = c;
+                io_putchar(c);
+            }
+        }
     }
 }

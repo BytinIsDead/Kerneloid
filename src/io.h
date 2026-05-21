@@ -8,6 +8,7 @@ void io_init(void);
 void io_putchar(char c);
 void io_print(const char* str);
 void io_println(const char* str);
+char io_getchar(void);  /* Read character from keyboard */
 
 /* Port I/O functions */
 static inline void outb(uint16_t port, uint8_t value) {

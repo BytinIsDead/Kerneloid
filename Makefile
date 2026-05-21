@@ -83,5 +83,17 @@ debug: $(ISO)
 clean:
 	rm -rf $(BUILDDIR)
 
+# Install to device (requires root)
+install: $(TARGET)
+	@echo "Building kernel first..."
+	@if [ ! -f "$(TARGET)" ]; then $(MAKE) build; fi
+	@echo "Running installation script..."
+	sudo ./scripts/install.sh
+
+# Format disk image with UnnamedFS
+format-unnamedfs:
+	dd if=/dev/zero of=$(BUILDDIR)/disk.img bs=1M count=64
+	./scripts/install.sh $(BUILDDIR)/disk.img
+
 # Phony targets
-.PHONY: all clean run run-serial debug
+.PHONY: all clean run run-serial debug install format-unnamedfs

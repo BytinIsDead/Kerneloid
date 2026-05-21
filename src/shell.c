@@ -55,6 +55,7 @@ static struct shell_builtin builtins[] = {
     {"clear", cmd_clear},
     {"exit", cmd_exit},
     {"version", cmd_version},
+    {"cpuinfo", cmd_cpuinfo},
     {0, 0}
 };
 
@@ -158,6 +159,7 @@ int cmd_help(int argc, char **argv) {
     io_println("  clear    - Clear screen");
     io_println("  exit     - Exit shell");
     io_println("  version  - Show version info");
+    io_println("  cpuinfo  - Show CPU information");
     
     return 0;
 }
@@ -235,5 +237,64 @@ int cmd_version(int argc, char **argv) {
     io_println("  - UnnamedFS filesystem support");
     io_println("  - POSIX-like API");
     io_println("  - Minimal shell");
+    return 0;
+}
+
+int cmd_cpuinfo(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    
+    io_println("CPU Information:");
+    io_println("  Architecture: x86 (i386)");
+    io_println("  Mode: Protected Mode (32-bit)");
+    io_println("  Bootloader: Multiboot (GRUB)");
+    
+    /* Print CPUID info if available */
+    uint32_t eax, ebx, ecx, edx;
+    
+    /* Check CPUID support and get vendor string */
+    asm volatile ("cpuid" 
+                  : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                  : "a"(0));
+    
+    io_print("  Vendor: ");
+    /* EBX, EDX, ECX contain vendor string */
+    io_putchar((ebx >> 0) & 0xFF);
+    io_putchar((ebx >> 8) & 0xFF);
+    io_putchar((ebx >> 16) & 0xFF);
+    io_putchar((ebx >> 24) & 0xFF);
+    io_putchar((edx >> 0) & 0xFF);
+    io_putchar((edx >> 8) & 0xFF);
+    io_putchar((edx >> 16) & 0xFF);
+    io_putchar((edx >> 24) & 0xFF);
+    io_putchar((ecx >> 0) & 0xFF);
+    io_putchar((ecx >> 8) & 0xFF);
+    io_putchar((ecx >> 16) & 0xFF);
+    io_putchar((ecx >> 24) & 0xFF);
+    io_println("");
+    
+    /* Get feature flags */
+    asm volatile ("cpuid" 
+                  : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                  : "a"(1));
+    
+    io_println("  Features:");
+    if (edx & (1 << 0)) io_println("    - FPU (x87 FPU)");
+    if (edx & (1 << 1)) io_println("    - VME (Virtual Mode Extensions)");
+    if (edx & (1 << 2)) io_println("    - DE (Debugging Extensions)");
+    if (edx & (1 << 3)) io_println("    - PSE (Page Size Extensions)");
+    if (edx & (1 << 4)) io_println("    - TSC (Time Stamp Counter)");
+    if (edx & (1 << 5)) io_println("    - MSR (Model Specific Registers)");
+    if (edx & (1 << 6)) io_println("    - PAE (Physical Address Extensions)");
+    if (edx & (1 << 7)) io_println("    - MCE (Machine Check Exception)");
+    if (edx & (1 << 8)) io_println("    - CX8 (CMPXCHG8B)");
+    if (edx & (1 << 9)) io_println("    - APIC (Advanced PIC)");
+    if (edx & (1 << 11)) io_println("    - SEP (SYSENTER/SYSEXIT)");
+    if (edx & (1 << 15)) io_println("    - CMOV (Conditional Move)");
+    if (edx & (1 << 23)) io_println("    - MMX");
+    if (edx & (1 << 24)) io_println("    - FXSR (FXSAVE/FXRSTOR)");
+    if (edx & (1 << 25)) io_println("    - SSE");
+    if (edx & (1 << 26)) io_println("    - SSE2");
+    
     return 0;
 }

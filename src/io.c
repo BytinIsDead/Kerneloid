@@ -123,3 +123,90 @@ void io_init(void) {
     set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
     clear_screen();
 }
+
+char io_getchar(void) {
+    /* Read scancode from keyboard port 0x60 */
+    /* Wait for keypress by polling */
+    uint8_t scancode;
+    while (1) {
+        uint8_t status = inb(0x64);
+        if (status & 0x01) {  /* Output buffer full */
+            scancode = inb(0x60);
+            break;
+        }
+    }
+    
+    /* Convert scancode to ASCII (basic US layout) */
+    static const char scancode_to_ascii[] = {
+        0,   /* 0x00 - unused */
+        0,   /* 0x01 - ESC */
+        '1', /* 0x02 */
+        '2', /* 0x03 */
+        '3', /* 0x04 */
+        '4', /* 0x05 */
+        '5', /* 0x06 */
+        '6', /* 0x07 */
+        '7', /* 0x08 */
+        '8', /* 0x09 */
+        '9', /* 0x0A */
+        '0', /* 0x0B */
+        '-', /* 0x0C */
+        '=', /* 0x0D */
+        '\b',/* 0x0E - Backspace */
+        '\t',/* 0x0F - Tab */
+        'q', /* 0x10 */
+        'w', /* 0x11 */
+        'e', /* 0x12 */
+        'r', /* 0x13 */
+        't', /* 0x14 */
+        'y', /* 0x15 */
+        'u', /* 0x16 */
+        'i', /* 0x17 */
+        'o', /* 0x18 */
+        'p', /* 0x19 */
+        '[', /* 0x1A */
+        ']', /* 0x1B */
+        '\n',/* 0x1C - Enter */
+        0,   /* 0x1D - L Ctrl (handled separately) */
+        'a', /* 0x1E */
+        's', /* 0x1F */
+        'd', /* 0x20 */
+        'f', /* 0x21 */
+        'g', /* 0x22 */
+        'h', /* 0x23 */
+        'j', /* 0x24 */
+        'k', /* 0x25 */
+        'l', /* 0x26 */
+        ';', /* 0x27 */
+        '\'',/* 0x28 */
+        '`', /* 0x29 */
+        0,   /* 0x2A - L Shift */
+        '\\',/* 0x2B */
+        'z', /* 0x2C */
+        'x', /* 0x2D */
+        'c', /* 0x2E */
+        'v', /* 0x2F */
+        'b', /* 0x30 */
+        'n', /* 0x31 */
+        'm', /* 0x32 */
+        ',', /* 0x33 */
+        '.', /* 0x34 */
+        '/', /* 0x35 */
+        0,   /* 0x36 - R Shift */
+        '*', /* 0x37 - Keypad * */
+        0,   /* 0x38 - L Alt */
+        ' ', /* 0x39 - Space */
+        0,   /* 0x3A - Caps Lock */
+    };
+    
+    /* Handle key release (high bit set) - ignore */
+    if (scancode & 0x80) {
+        return 0;
+    }
+    
+    if (scancode < sizeof(scancode_to_ascii)) {
+        return scancode_to_ascii[scancode];
+    }
+    
+    return 0;
+}

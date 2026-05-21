@@ -49,5 +49,6 @@ int cmd_echo(int argc, char **argv);
 int cmd_clear(int argc, char **argv);
 int cmd_exit(int argc, char **argv);
 int cmd_version(int argc, char **argv);
+int cmd_cpuinfo(int argc, char **argv);
 
 #endif /* TINX_SHELL_H */

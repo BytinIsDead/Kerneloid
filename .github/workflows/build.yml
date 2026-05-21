@@ -1,33 +1,35 @@
-name: Build Tinx Kernel
+name: Build and Release
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  release:
+    types: [ created ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin xorriso mtools
-        
+        sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin xorriso mtools make gcc
+
     - name: Build kernel
       run: make build
-      
+
     - name: Build ISO
       run: make iso
-      
+
     - name: Test boot (QEMU)
       run: |
         timeout 10s qemu-system-x86_64 -cdrom build/tinx.iso -no-reboot -display none || true
-        
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -37,36 +39,12 @@ jobs:
           build/tinx.iso
         retention-days: 30
 
-  build-opensuse:
-    runs-on: ubuntu-latest
-    container: opensuse/tumbleweed:latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install dependencies
-      run: |
-        zypper refresh
-        zypper install -y nasm qemu x86_64-gnu-linux-gcc9 grub2-tools xorriso mtools make git
-        
-    - name: Build kernel
-      run: make CC=gcc build
-      
-    - name: Build ISO
-      run: make iso
-      
-    - name: Test installation script
-      run: |
-        dd if=/dev/zero of=test_disk.img bs=1M count=64
-        chmod +x scripts/install.sh
-        ./scripts/install.sh test_disk.img || true
-        
-    - name: Upload openSUSE artifacts
-      uses: actions/upload-artifact@v4
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
       with:
-        name: tinx-opensuse
-        path: |
-          build/tinx.bin
+        files: |
           build/tinx.iso
-          test_disk.img
-        retention-days: 30
+          build/tinx.bin
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

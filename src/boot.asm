@@ -132,8 +132,7 @@ isr_common_stub:
     ; When we get here, the ISR macros have pushed:
     ; - For ISR_NOERRCODE: dummy error code (0), then interrupt number
     ; - For ISR_ERRCODE: real error code (from CPU), then interrupt number
-    ; So stack top is: [interrupt_num][error_code][return address from ISR macro jmp]
-    ; Actually the jmp doesn't push, so it's just [int_num][err_code] at top
+    ; So stack top is: [interrupt_num][error_code]
     
     pusha                           ; Push all general purpose registers (32 bytes)
     
@@ -157,11 +156,16 @@ isr_common_stub:
     ; [esp+36]  = interrupt number
     ; [esp+40]  = error code
     
-    ; Pass pointer to the interrupt number location
-    lea eax, [esp+36]
+    ; Align stack to 16 bytes before call (C cdecl convention)
+    ; Current stack: 4 (saved DS) + 32 (pusha) + 8 (int num + err code) = 44 bytes pushed
+    ; We need to align to 16 bytes before the call
+    sub esp, 4                      ; Align stack
+    
+    ; Pass pointer to the interrupt number location (now at esp+40 due to alignment)
+    lea eax, [esp+40]
     push eax
     call isr_handler
-    add esp, 4                      ; Clean up the pushed argument
+    add esp, 8                      ; Clean up argument and alignment padding
     
     ; Restore segment registers
     pop eax
@@ -176,3 +180,6 @@ isr_common_stub:
     add esp, 8
     
     iret
+
+; Add missing .note.GNU-stack section to avoid executable stack warning
+section .note.GNU-stack noalloc noexec nowrite progbits

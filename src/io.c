@@ -128,13 +128,14 @@ char io_getchar(void) {
     /* Read scancode from keyboard port 0x60 */
     /* Wait for keypress by polling */
     uint8_t scancode;
-    while (1) {
-        uint8_t status = inb(0x64);
-        if (status & 0x01) {  /* Output buffer full */
-            scancode = inb(0x60);
-            break;
-        }
+    
+    /* Check if there's data in the output buffer */
+    uint8_t status = inb(0x64);
+    if (!(status & 0x01)) {  /* Output buffer not full */
+        return 0;
     }
+    
+    scancode = inb(0x60);
     
     /* Convert scancode to ASCII (basic US layout) */
     static const char scancode_to_ascii[] = {

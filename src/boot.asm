@@ -88,8 +88,8 @@ isr%1:
 %macro ISR_ERRCODE 1
 isr%1:
     ; CPU pushes error code automatically for these interrupts
-    ; We need to push interrupt number after the error code
-    push byte %1            ; Push interrupt number
+    ; Stack now has: [error_code]
+    push byte %1            ; Push interrupt number after error code
     jmp isr_common_stub
 %endmacro
 
@@ -156,16 +156,12 @@ isr_common_stub:
     ; [esp+36]  = interrupt number
     ; [esp+40]  = error code
     
-    ; Align stack to 16 bytes before call (C cdecl convention)
-    ; Current stack: 4 (saved DS) + 32 (pusha) + 8 (int num + err code) = 44 bytes pushed
-    ; We need to align to 16 bytes before the call
-    sub esp, 4                      ; Align stack
-    
-    ; Pass pointer to the interrupt number location (now at esp+40 due to alignment)
-    lea eax, [esp+40]
+    ; Pass pointer to regs structure (the saved state on stack)
+    ; The C handler expects a pointer to the full register save area
+    lea eax, [esp]
     push eax
     call isr_handler
-    add esp, 8                      ; Clean up argument and alignment padding
+    add esp, 4                      ; Clean up argument
     
     ; Restore segment registers
     pop eax

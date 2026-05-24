@@ -188,12 +188,22 @@ void isr_handler(uint32_t* regs) {
     };
     
     /* 
-     * Stack layout when isr_handler is called:
-     * regs points to [esp+36] which contains the interrupt number
-     * regs[0] = interrupt number
-     * regs[1] = error code
+     * Stack layout when isr_handler is called (from boot.asm):
+     * regs points to esp after pusha + segment save
+     * [esp+0]   = saved DS (segment register we pushed)
+     * [esp+4]   = EDI
+     * [esp+8]   = ESI
+     * [esp+12]  = EBP
+     * [esp+16]  = ESP (original)
+     * [esp+20]  = EBX
+     * [esp+24]  = EDX
+     * [esp+28]  = ECX
+     * [esp+32]  = EAX
+     * [esp+36]  = interrupt number
+     * [esp+40]  = error code
      */
-    uint32_t int_num = regs[0];
+    uint32_t int_num = regs[9];  // interrupt number is at offset 36/4 = 9 from DS
+    uint32_t err_code = regs[10]; // error code is at offset 40/4 = 10 from DS
     
     if (int_num < 32) {
         io_print("\n!!! EXCEPTION: ");
@@ -206,8 +216,16 @@ void isr_handler(uint32_t* regs) {
         io_putchar(hex[int_num & 0xF]);
         io_println(")");
         
-        /* Don't panic on keyboard interrupt or other recoverable situations */
-        /* For now, just return to let system continue */
+        /* Halt on serious exceptions */
+        if (int_num == 8 || int_num == 13 || int_num == 14) {
+            io_print("Error Code: 0x");
+            io_putchar(hex[(err_code >> 12) & 0xF]);
+            io_putchar(hex[(err_code >> 8) & 0xF]);
+            io_putchar(hex[(err_code >> 4) & 0xF]);
+            io_putchar(hex[err_code & 0xF]);
+            io_println("");
+            kernel_panic("Critical exception occurred");
+        }
     }
 }
 

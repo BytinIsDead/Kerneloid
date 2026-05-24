@@ -26,69 +26,6 @@ enum vga_color {
     VGA_COLOR_WHITE = 15,
 };
 
-/* Scancode to ASCII conversion table (US layout) - global to avoid PIC issues */
-static const char scancode_to_ascii[0x3A] = {
-    0,   /* 0x00 - unused */
-    0,   /* 0x01 - ESC */
-    '1', /* 0x02 */
-    '2', /* 0x03 */
-    '3', /* 0x04 */
-    '4', /* 0x05 */
-    '5', /* 0x06 */
-    '6', /* 0x07 */
-    '7', /* 0x08 */
-    '8', /* 0x09 */
-    '9', /* 0x0A */
-    '0', /* 0x0B */
-    '-', /* 0x0C */
-    '=', /* 0x0D */
-    '\b',/* 0x0E - Backspace */
-    '\t',/* 0x0F - Tab */
-    'q', /* 0x10 */
-    'w', /* 0x11 */
-    'e', /* 0x12 */
-    'r', /* 0x13 */
-    't', /* 0x14 */
-    'y', /* 0x15 */
-    'u', /* 0x16 */
-    'i', /* 0x17 */
-    'o', /* 0x18 */
-    'p', /* 0x19 */
-    '[', /* 0x1A */
-    ']', /* 0x1B */
-    '\n',/* 0x1C - Enter */
-    0,   /* 0x1D - L Ctrl */
-    'a', /* 0x1E */
-    's', /* 0x1F */
-    'd', /* 0x20 */
-    'f', /* 0x21 */
-    'g', /* 0x22 */
-    'h', /* 0x23 */
-    'j', /* 0x24 */
-    'k', /* 0x25 */
-    'l', /* 0x26 */
-    ';', /* 0x27 */
-    '\'',/* 0x28 */
-    '`', /* 0x29 */
-    0,   /* 0x2A - L Shift */
-    '\\',/* 0x2B */
-    'z', /* 0x2C */
-    'x', /* 0x2D */
-    'c', /* 0x2E */
-    'v', /* 0x2F */
-    'b', /* 0x30 */
-    'n', /* 0x31 */
-    'm', /* 0x32 */
-    ',', /* 0x33 */
-    '.', /* 0x34 */
-    '/', /* 0x35 */
-    0,   /* 0x36 - R Shift */
-    '*', /* 0x37 - Keypad * */
-    0,   /* 0x38 - L Alt */
-    ' ', /* 0x39 - Space */
-    0,   /* 0x3A - Caps Lock */
-};
-
 static uint16_t* vga_buffer = (uint16_t*) VGA_MEMORY;
 static size_t cursor_x = 0;
 static size_t cursor_y = 0;
@@ -202,61 +139,61 @@ char io_getchar(void) {
         return 0;
     }
     
-    /* Simple scancode to ASCII conversion without large lookup table */
-    /* This avoids PIC relocations and large data sections */
-    switch (scancode) {
-        case 0x02: return '1';
-        case 0x03: return '2';
-        case 0x04: return '3';
-        case 0x05: return '4';
-        case 0x06: return '5';
-        case 0x07: return '6';
-        case 0x08: return '7';
-        case 0x09: return '8';
-        case 0x0A: return '9';
-        case 0x0B: return '0';
-        case 0x0C: return '-';
-        case 0x0D: return '=';
-        case 0x0E: return '\b';
-        case 0x0F: return '\t';
-        case 0x10: return 'q';
-        case 0x11: return 'w';
-        case 0x12: return 'e';
-        case 0x13: return 'r';
-        case 0x14: return 't';
-        case 0x15: return 'y';
-        case 0x16: return 'u';
-        case 0x17: return 'i';
-        case 0x18: return 'o';
-        case 0x19: return 'p';
-        case 0x1A: return '[';
-        case 0x1B: return ']';
-        case 0x1C: return '\n';
-        case 0x1E: return 'a';
-        case 0x1F: return 's';
-        case 0x20: return 'd';
-        case 0x21: return 'f';
-        case 0x22: return 'g';
-        case 0x23: return 'h';
-        case 0x24: return 'j';
-        case 0x25: return 'k';
-        case 0x26: return 'l';
-        case 0x27: return ';';
-        case 0x28: return '\'';
-        case 0x29: return '`';
-        case 0x2B: return '\\';
-        case 0x2C: return 'z';
-        case 0x2D: return 'x';
-        case 0x2E: return 'c';
-        case 0x2F: return 'v';
-        case 0x30: return 'b';
-        case 0x31: return 'n';
-        case 0x32: return 'm';
-        case 0x33: return ',';
-        case 0x34: return '.';
-        case 0x35: return '/';
-        case 0x37: return '*';
-        case 0x39: return ' ';
-        default: return 0;  /* Unknown or modifier key */
-    }
+    /* Simple scancode to ASCII conversion using if-else chain */
+    /* This avoids switch statements which may generate jump tables */
+    if (scancode == 0x02) return '1';
+    if (scancode == 0x03) return '2';
+    if (scancode == 0x04) return '3';
+    if (scancode == 0x05) return '4';
+    if (scancode == 0x06) return '5';
+    if (scancode == 0x07) return '6';
+    if (scancode == 0x08) return '7';
+    if (scancode == 0x09) return '8';
+    if (scancode == 0x0A) return '9';
+    if (scancode == 0x0B) return '0';
+    if (scancode == 0x0C) return '-';
+    if (scancode == 0x0D) return '=';
+    if (scancode == 0x0E) return '\b';
+    if (scancode == 0x0F) return '\t';
+    if (scancode == 0x10) return 'q';
+    if (scancode == 0x11) return 'w';
+    if (scancode == 0x12) return 'e';
+    if (scancode == 0x13) return 'r';
+    if (scancode == 0x14) return 't';
+    if (scancode == 0x15) return 'y';
+    if (scancode == 0x16) return 'u';
+    if (scancode == 0x17) return 'i';
+    if (scancode == 0x18) return 'o';
+    if (scancode == 0x19) return 'p';
+    if (scancode == 0x1A) return '[';
+    if (scancode == 0x1B) return ']';
+    if (scancode == 0x1C) return '\n';
+    if (scancode == 0x1E) return 'a';
+    if (scancode == 0x1F) return 's';
+    if (scancode == 0x20) return 'd';
+    if (scancode == 0x21) return 'f';
+    if (scancode == 0x22) return 'g';
+    if (scancode == 0x23) return 'h';
+    if (scancode == 0x24) return 'j';
+    if (scancode == 0x25) return 'k';
+    if (scancode == 0x26) return 'l';
+    if (scancode == 0x27) return ';';
+    if (scancode == 0x28) return '\'';
+    if (scancode == 0x29) return '`';
+    if (scancode == 0x2B) return '\\';
+    if (scancode == 0x2C) return 'z';
+    if (scancode == 0x2D) return 'x';
+    if (scancode == 0x2E) return 'c';
+    if (scancode == 0x2F) return 'v';
+    if (scancode == 0x30) return 'b';
+    if (scancode == 0x31) return 'n';
+    if (scancode == 0x32) return 'm';
+    if (scancode == 0x33) return ',';
+    if (scancode == 0x34) return '.';
+    if (scancode == 0x35) return '/';
+    if (scancode == 0x37) return '*';
+    if (scancode == 0x39) return ' ';
+    
+    /* Unknown or modifier key - explicitly return 0 */
+    return (char)0;
 }

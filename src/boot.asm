@@ -78,18 +78,19 @@ global isr29
 global isr30
 global isr31
 
-%macro ISR_NOERRCODE 1
-isr%1:
-    push byte 0             ; Push dummy error code
-    push byte %1            ; Push interrupt number
-    jmp isr_common_stub
-%endmacro
-
 %macro ISR_ERRCODE 1
 isr%1:
     ; CPU pushes error code automatically for these interrupts
     ; Stack now has: [error_code]
     push byte %1            ; Push interrupt number after error code
+                            ; Stack now: [interrupt_num][error_code]
+    jmp isr_common_stub
+%endmacro
+
+%macro ISR_NOERRCODE 1
+isr%1:
+    push byte 0             ; Push dummy error code
+    push byte %1            ; Push interrupt number
     jmp isr_common_stub
 %endmacro
 

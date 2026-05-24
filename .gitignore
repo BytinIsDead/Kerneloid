@@ -2,10 +2,5 @@
 # Compiled and build artifacts
 *.o
 *.obj
-*.bin
 build/
-# Logs and temp files
-*.log
-*.tmp
-*.swp
 ```

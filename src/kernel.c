@@ -188,13 +188,12 @@ void isr_handler(uint32_t* regs) {
     };
     
     /* 
-     * Stack layout at this point (from top to bottom):
-     * [regs+0..regs+15] = pushed registers from pusha
-     * [regs+16] = saved DS
-     * [regs+17] = interrupt number (pushed by ISR stub)
-     * [regs+18] = error code (if applicable, or dummy 0)
+     * Stack layout when isr_handler is called:
+     * regs points to [esp+36] which contains the interrupt number
+     * regs[0] = interrupt number
+     * regs[1] = error code
      */
-    uint32_t int_num = regs[17];  /* Interrupt number is after pusha (16 regs) + saved DS */
+    uint32_t int_num = regs[0];
     
     if (int_num < 32) {
         io_print("\n!!! EXCEPTION: ");

@@ -80,16 +80,17 @@ global isr31
 
 %macro ISR_NOERRCODE 1
 isr%1:
-    push dword 0          ; Push dummy error code
-    push dword %1         ; Push interrupt number
+    push byte 0             ; Push dummy error code
+    push byte %1            ; Push interrupt number
     jmp isr_common_stub
 %endmacro
 
 %macro ISR_ERRCODE 1
 isr%1:
-    ; Error code is already on stack from CPU, we need to push interrupt number AFTER it
-    push dword %1         ; Push interrupt number after error code
-    jmp isr_common_stub_errcode
+    ; CPU pushes error code automatically for these interrupts
+    ; We need to push interrupt number after the error code
+    push byte %1            ; Push interrupt number
+    jmp isr_common_stub
 %endmacro
 
 ISR_NOERRCODE 0
@@ -128,41 +129,50 @@ ISR_NOERRCODE 31
 extern isr_handler
 
 isr_common_stub:
-    pusha
+    ; When we get here, the ISR macros have pushed:
+    ; - For ISR_NOERRCODE: dummy error code (0), then interrupt number
+    ; - For ISR_ERRCODE: real error code (from CPU), then interrupt number
+    ; So stack top is: [interrupt_num][error_code][return address from ISR macro jmp]
+    ; Actually the jmp doesn't push, so it's just [int_num][err_code] at top
+    
+    pusha                           ; Push all general purpose registers (32 bytes)
+    
+    ; Save segment registers
     mov ax, ds
-    push eax
+    push eax                        ; 4 bytes
+    
+    ; Set kernel data segment
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     cld
-    call isr_handler
-    pop eax
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    popa
-    add esp, 8          ; Remove error code (dummy) and interrupt number
-    iret
-
-isr_common_stub_errcode:
-    pusha
-    mov ax, ds
+    
+    ; Now stack from current esp:
+    ; [esp+0]   = saved DS
+    ; [esp+4]   = EDI (first pushed by pusha)
+    ; ...
+    ; [esp+32]  = EAX (last pushed by pusha)  
+    ; [esp+36]  = interrupt number
+    ; [esp+40]  = error code
+    
+    ; Pass pointer to the interrupt number location
+    lea eax, [esp+36]
     push eax
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    cld
     call isr_handler
+    add esp, 4                      ; Clean up the pushed argument
+    
+    ; Restore segment registers
     pop eax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
-    popa
-    add esp, 8          ; Remove real error code and interrupt number
+    
+    popa                            ; Restore all general purpose registers
+    
+    ; Clean up: remove interrupt number and error code from stack
+    add esp, 8
+    
     iret

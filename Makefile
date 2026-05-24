@@ -25,7 +25,7 @@ ISO = $(BUILDDIR)/tinx.iso
 
 # Compiler flags
 CFLAGS = -ffreestanding -O2 -Wall -Wextra -I$(SRCDIR) \
-         -m32 -fno-pie -fno-stack-protector -nostdlib -nostartfiles
+         -m32 -fno-pie -fno-stack-protector -nostdlib -nostartfiles -fno-jump-tables
 
 # Linker flags
 LDFLAGS = -m elf_i386 -T linker.ld -nostdlib

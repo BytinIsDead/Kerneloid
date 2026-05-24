@@ -78,17 +78,18 @@ global isr29
 global isr30
 global isr31
 
-%macro ISR_NOERRCODE 1
-isr%1:
-    push byte 0             ; Push dummy error code
-    push byte %1            ; Push interrupt number
-    jmp isr_common_stub
-%endmacro
-
 %macro ISR_ERRCODE 1
 isr%1:
     ; CPU pushes error code automatically for these interrupts
-    ; We need to push interrupt number after the error code
+    ; Stack now has: [error_code]
+    push byte %1            ; Push interrupt number after error code
+                            ; Stack now: [interrupt_num][error_code]
+    jmp isr_common_stub
+%endmacro
+
+%macro ISR_NOERRCODE 1
+isr%1:
+    push byte 0             ; Push dummy error code
     push byte %1            ; Push interrupt number
     jmp isr_common_stub
 %endmacro
@@ -132,8 +133,7 @@ isr_common_stub:
     ; When we get here, the ISR macros have pushed:
     ; - For ISR_NOERRCODE: dummy error code (0), then interrupt number
     ; - For ISR_ERRCODE: real error code (from CPU), then interrupt number
-    ; So stack top is: [interrupt_num][error_code][return address from ISR macro jmp]
-    ; Actually the jmp doesn't push, so it's just [int_num][err_code] at top
+    ; So stack top is: [interrupt_num][error_code]
     
     pusha                           ; Push all general purpose registers (32 bytes)
     
@@ -157,11 +157,14 @@ isr_common_stub:
     ; [esp+36]  = interrupt number
     ; [esp+40]  = error code
     
-    ; Pass pointer to the interrupt number location
-    lea eax, [esp+36]
-    push eax
+    ; Pass pointer to regs structure (the saved state on stack)
+    ; The C handler expects a pointer to the full register save area
+    ; We need to align stack to 16 bytes before call
+    mov eax, esp
+    push eax                        ; Push pointer to regs
+    sub esp, 4                      ; Align stack to 16 bytes
     call isr_handler
-    add esp, 4                      ; Clean up the pushed argument
+    add esp, 8                      ; Clean up argument and alignment padding
     
     ; Restore segment registers
     pop eax
@@ -176,3 +179,6 @@ isr_common_stub:
     add esp, 8
     
     iret
+
+; Add missing .note.GNU-stack section to avoid executable stack warning
+section .note.GNU-stack noalloc noexec nowrite progbits

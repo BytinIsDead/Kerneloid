@@ -78,18 +78,20 @@ global isr29
 global isr30
 global isr31
 
-%macro ISR_NOERRCODE 1
+%macro ISR_ERRCODE 1
 isr%1:
-    push dword 0          ; Push dummy error code
-    push dword %1         ; Push interrupt number
+    ; CPU pushes error code automatically for these interrupts
+    ; Stack now has: [error_code]
+    push byte %1            ; Push interrupt number after error code
+                            ; Stack now: [interrupt_num][error_code]
     jmp isr_common_stub
 %endmacro
 
-%macro ISR_ERRCODE 1
+%macro ISR_NOERRCODE 1
 isr%1:
-    ; Error code is already on stack from CPU, we need to push interrupt number AFTER it
-    push dword %1         ; Push interrupt number after error code
-    jmp isr_common_stub_errcode
+    push byte 0             ; Push dummy error code
+    push byte %1            ; Push interrupt number
+    jmp isr_common_stub
 %endmacro
 
 ISR_NOERRCODE 0
@@ -128,41 +130,55 @@ ISR_NOERRCODE 31
 extern isr_handler
 
 isr_common_stub:
-    pusha
+    ; When we get here, the ISR macros have pushed:
+    ; - For ISR_NOERRCODE: dummy error code (0), then interrupt number
+    ; - For ISR_ERRCODE: real error code (from CPU), then interrupt number
+    ; So stack top is: [interrupt_num][error_code]
+    
+    pusha                           ; Push all general purpose registers (32 bytes)
+    
+    ; Save segment registers
     mov ax, ds
-    push eax
+    push eax                        ; 4 bytes
+    
+    ; Set kernel data segment
     mov ax, 0x10
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
     cld
+    
+    ; Now stack from current esp:
+    ; [esp+0]   = saved DS
+    ; [esp+4]   = EDI (first pushed by pusha)
+    ; ...
+    ; [esp+32]  = EAX (last pushed by pusha)  
+    ; [esp+36]  = interrupt number
+    ; [esp+40]  = error code
+    
+    ; Pass pointer to regs structure (the saved state on stack)
+    ; The C handler expects a pointer to the full register save area
+    ; We need to align stack to 16 bytes before call
+    mov eax, esp
+    push eax                        ; Push pointer to regs
+    sub esp, 4                      ; Align stack to 16 bytes
     call isr_handler
+    add esp, 8                      ; Clean up argument and alignment padding
+    
+    ; Restore segment registers
     pop eax
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
-    popa
-    add esp, 8          ; Remove error code (dummy) and interrupt number
+    
+    popa                            ; Restore all general purpose registers
+    
+    ; Clean up: remove interrupt number and error code from stack
+    add esp, 8
+    
     iret
 
-isr_common_stub_errcode:
-    pusha
-    mov ax, ds
-    push eax
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    cld
-    call isr_handler
-    pop eax
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    popa
-    add esp, 8          ; Remove real error code and interrupt number
-    iret
+; Add missing .note.GNU-stack section to avoid executable stack warning
+section .note.GNU-stack noalloc noexec nowrite progbits

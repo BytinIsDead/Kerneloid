@@ -233,10 +233,11 @@ int cmd_exit(int argc, char **argv) {
 int cmd_version(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    io_println("Tinx Kernel v1.0");
+    io_println("TINX v1.0 \"Handsome Dorito\"");
     io_println("  - UnnamedFS filesystem support");
     io_println("  - POSIX-like API");
-    io_println("  - Minimal shell");
+    io_println("  - Interactive shell");
+    io_println("  - CPUID support");
     return 0;
 }
 

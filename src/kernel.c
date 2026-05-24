@@ -188,15 +188,26 @@ void isr_handler(uint32_t* regs) {
     };
     
     /* 
-     * Stack layout at this point (from top to bottom):
-     * [regs+0..regs+15] = pushed registers from pusha
-     * [regs+16] = saved DS
-     * [regs+17] = interrupt number (pushed by ISR stub)
-     * [regs+18] = error code (if applicable, or dummy 0)
+     * Stack layout when isr_handler is called (from boot.asm):
+     * After pusha and segment save, we push eax (pointer to esp)
+     * So regs points to the saved DS value
+     * [regs+0]  = saved DS (segment register we pushed)
+     * [regs+1]  = EDI (first pushed by pusha)
+     * [regs+2]  = ESI
+     * [regs+3]  = EBP
+     * [regs+4]  = ESP (original, pushed by pusha)
+     * [regs+5]  = EBX
+     * [regs+6]  = EDX
+     * [regs+7]  = ECX
+     * [regs+8]  = EAX
+     * [regs+9]  = interrupt number
+     * [regs+10] = error code
      */
-    uint32_t int_num = regs[17];  /* Interrupt number is after pusha (16 regs) + saved DS */
+    uint32_t int_num = regs[9];   // interrupt number
+    uint32_t err_code = regs[10]; // error code
     
     if (int_num < 32) {
+        /* CPU Exception */
         io_print("\n!!! EXCEPTION: ");
         io_print(exception_messages[int_num]);
         io_print(" (Interrupt 0x");
@@ -207,8 +218,24 @@ void isr_handler(uint32_t* regs) {
         io_putchar(hex[int_num & 0xF]);
         io_println(")");
         
-        /* Don't panic on keyboard interrupt or other recoverable situations */
-        /* For now, just return to let system continue */
+        /* Halt on serious exceptions */
+        if (int_num == 8 || int_num == 13 || int_num == 14) {
+            io_print("Error Code: 0x");
+            io_putchar(hex[(err_code >> 12) & 0xF]);
+            io_putchar(hex[(err_code >> 8) & 0xF]);
+            io_putchar(hex[(err_code >> 4) & 0xF]);
+            io_putchar(hex[err_code & 0xF]);
+            io_println("");
+            kernel_panic("Critical exception occurred");
+        }
+    } else if (int_num >= 0x20 && int_num < 0x30) {
+        /* Hardware Interrupt (IRQ0-IRQ15) - Send EOI to PIC */
+        /* Must send EOI to master PIC for all IRQs */
+        outb(0x20, 0x20);
+        /* If it's a slave IRQ (IRQ8-IRQ15), also send EOI to slave */
+        if (int_num >= 0x28) {
+            outb(0xA0, 0x20);
+        }
     }
 }
 
@@ -241,7 +268,7 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     
     /* Print welcome message */
     io_println("========================================");
-    io_println("       Tinx Kernel v0.1.0");
+    io_println("       TINX v1.0 \"Handsome Dorito\"");
     io_println("========================================");
     io_println("");
     io_println("Booting...");

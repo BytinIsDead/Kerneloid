@@ -7,6 +7,7 @@
 #include "serial.h"
 #include "gdt.h"
 #include "shell.h"
+#include "vfs.h"
 
 /* Multiboot magic number */
 #define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
@@ -322,6 +323,11 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     idt_init();
     io_println("Interrupt Descriptor Table initialized.");
     serial_writeln("IDT initialized successfully");
+    
+    /* Initialize VFS subsystem */
+    vfs_init();
+    io_println("Virtual File System initialized.");
+    serial_writeln("VFS initialized successfully");
     
     /* Print memory info if available */
     if (mboot_info && (mboot_info[0] & (1 << 6))) {

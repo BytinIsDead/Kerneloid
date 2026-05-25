@@ -17,7 +17,7 @@ ASM_SOURCES = $(wildcard $(SRCDIR)/*.asm)
 # Object files
 C_OBJECTS = $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(C_SOURCES))
 ASM_OBJECTS = $(patsubst $(SRCDIR)/%.asm,$(BUILDDIR)/%.o,$(ASM_SOURCES))
-OBJECTS = $(C_OBJECTS) $(ASM_OBJECTS)
+OBJECTS = $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o
 
 # Target
 TARGET = $(BUILDDIR)/tinx.bin
@@ -48,9 +48,14 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
 $(BUILDDIR)/%.o: $(SRCDIR)/%.asm | $(BUILDDIR)
 	$(ASM) $(ASMFLAGS) $< -o $@
 
-# Link the kernel
-$(TARGET): $(OBJECTS) linker.ld
-	$(LD) $(LDFLAGS) $(OBJECTS) -o $@
+# Link the kernel (first pass without embedded binary)
+$(BUILDDIR)/tinxbinary.o: $(C_OBJECTS) $(ASM_OBJECTS) linker.ld
+	$(LD) $(LDFLAGS) $(C_OBJECTS) $(ASM_OBJECTS) -o $(TARGET)
+	objcopy -I binary -O elf32-i386 -B i386 $(TARGET) $@
+
+# Link the kernel (final with embedded binary)
+$(TARGET): $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o linker.ld
+	$(LD) $(LDFLAGS) $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o -o $@
 
 # Create bootable ISO
 $(ISO): $(TARGET)

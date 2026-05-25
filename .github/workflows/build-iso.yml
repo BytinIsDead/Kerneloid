@@ -23,7 +23,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin xorriso make gcc-multilib
+        sudo apt-get install -y nasm qemu-system-x86 grub-pc-bin xorriso make gcc-multilib mtools
 
     - name: Build kernel
       run: make clean && make

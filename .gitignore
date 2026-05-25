@@ -1,25 +1,6 @@
 ```
 # Build artifacts
 build/
-*.o
 *.bin
-
-# Dependencies
-node_modules/
-.venv/
-venv/
-__pycache__/
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Editors
-.vscode/
-.idea/
-
-# Environment
-.env
-.env.local
-*.env.*
+*.o
 ```

@@ -1,9 +1,11 @@
 /*
  * Tinx Shell Implementation
+ * XNU-like shell with VFS integration
  */
 
 #include "shell.h"
 #include "io.h"
+#include "vfs.h"
 
 /* Simple string functions for freestanding environment */
 static int shell_strchr(const char *s, int c) {
@@ -40,10 +42,25 @@ static char *shell_strtok(char *str, const char *delim) {
     return token;
 }
 
+static size_t shell_strlen(const char *s) {
+    size_t len = 0;
+    while (*s++) len++;
+    return len;
+}
+
+static char *shell_strcat(char *dest, const char *src) {
+    char *d = dest;
+    while (*d) d++;
+    while ((*d++ = *src++));
+    return dest;
+}
+
 #define strcpy shell_strcpy
 #define strcmp shell_strcmp
 #define strtok shell_strtok
 #define strchr shell_strchr
+#define strlen shell_strlen
+#define strcat shell_strcat
 
 static struct shell_builtin builtins[] = {
     {"help", cmd_help},
@@ -56,6 +73,12 @@ static struct shell_builtin builtins[] = {
     {"exit", cmd_exit},
     {"version", cmd_version},
     {"cpuinfo", cmd_cpuinfo},
+    {"mkdir", cmd_mkdir},
+    {"touch", cmd_touch},
+    {"rm", cmd_rm},
+    {"stat", cmd_stat},
+    {"write", cmd_write},
+    {"fm", cmd_fm},
     {0, 0}
 };
 
@@ -297,5 +320,308 @@ int cmd_cpuinfo(int argc, char **argv) {
     if (edx & (1 << 25)) io_println("    - SSE");
     if (edx & (1 << 26)) io_println("    - SSE2");
     
+    return 0;
+}
+
+/* New VFS-integrated commands */
+
+int cmd_mkdir(int argc, char **argv) {
+    if (argc < 2) {
+        io_println("Usage: mkdir <directory>");
+        return 1;
+    }
+    
+    if (vfs_mkdir(argv[1]) == 0) {
+        io_print("Created directory: ");
+        io_println(argv[1]);
+        return 0;
+    } else {
+        io_print("Failed to create directory: ");
+        io_println(argv[1]);
+        return 1;
+    }
+}
+
+int cmd_touch(int argc, char **argv) {
+    if (argc < 2) {
+        io_println("Usage: touch <file>");
+        return 1;
+    }
+    
+    /* Try to open for writing, creating if needed */
+    int fd = vfs_open(argv[1], VFS_MODE_READ | VFS_MODE_WRITE);
+    if (fd >= 0) {
+        vfs_close(fd);
+        io_print("Created/touched file: ");
+        io_println(argv[1]);
+        return 0;
+    } else {
+        io_print("Failed to create file: ");
+        io_println(argv[1]);
+        return 1;
+    }
+}
+
+int cmd_rm(int argc, char **argv) {
+    if (argc < 2) {
+        io_println("Usage: rm <file>");
+        return 1;
+    }
+    
+    if (vfs_unlink(argv[1]) == 0) {
+        io_print("Removed: ");
+        io_println(argv[1]);
+        return 0;
+    } else {
+        io_print("Failed to remove: ");
+        io_println(argv[1]);
+        return 1;
+    }
+}
+
+int cmd_stat(int argc, char **argv) {
+    struct vfs_stat stat_buf;
+    
+    if (argc < 2) {
+        io_println("Usage: stat <path>");
+        return 1;
+    }
+    
+    if (vfs_stat(argv[1], &stat_buf) != 0) {
+        io_print("Failed to stat: ");
+        io_println(argv[1]);
+        return 1;
+    }
+    
+    io_println("File Statistics:");
+    io_print("  Type: ");
+    if (stat_buf.type == VFS_TYPE_DIR) {
+        io_println("Directory");
+    } else if (stat_buf.type == VFS_TYPE_FILE) {
+        io_println("Regular File");
+    } else {
+        io_println("Unknown");
+    }
+    
+    io_print("  Size: ");
+    /* Simple number printing */
+    if (stat_buf.size == 0) {
+        io_putchar('0');
+    } else {
+        uint32_t n = stat_buf.size;
+        char buf[12];
+        int i = 0;
+        while (n > 0) {
+            buf[i++] = '0' + (n % 10);
+            n /= 10;
+        }
+        while (i > 0) io_putchar(buf[--i]);
+    }
+    io_println(" bytes");
+    
+    io_println("  Mode: RW");
+    
+    return 0;
+}
+
+int cmd_write(int argc, char **argv) {
+    if (argc < 3) {
+        io_println("Usage: write <file> <data>");
+        return 1;
+    }
+    
+    int fd = vfs_open(argv[1], VFS_MODE_READ | VFS_MODE_WRITE);
+    if (fd < 0) {
+        io_print("Failed to open: ");
+        io_println(argv[1]);
+        return 1;
+    }
+    
+    vfs_ssize_t written = vfs_write(fd, argv[2], strlen(argv[2]));
+    vfs_close(fd);
+    
+    if (written > 0) {
+        io_print("Wrote ");
+        /* Print number */
+        uint32_t n = (uint32_t)written;
+        char buf[12];
+        int i = 0;
+        if (n == 0) {
+            io_putchar('0');
+        } else {
+            while (n > 0) {
+                buf[i++] = '0' + (n % 10);
+                n /= 10;
+            }
+            while (i > 0) io_putchar(buf[--i]);
+        }
+        io_print(" bytes to ");
+        io_println(argv[1]);
+        return 0;
+    } else {
+        io_print("Failed to write to ");
+        io_println(argv[1]);
+        return 1;
+    }
+}
+
+/* Simple file manager / browser */
+static char fm_current_path[VFS_MAX_PATH] = "/";
+static int fm_selected = 0;
+static int fm_offset = 0;
+static char fm_entries[32][VFS_MAX_NAME];
+static int fm_num_entries = 0;
+
+static void fm_refresh(void) {
+    fm_num_entries = 0;
+    
+    /* Add ".." if not at root */
+    if (strcmp(fm_current_path, "/") != 0) {
+        strcpy(fm_entries[fm_num_entries++], "..");
+    }
+    
+    /* Open current directory */
+    int fd = vfs_open(fm_current_path, VFS_MODE_READ);
+    if (fd < 0) return;
+    
+    /* Read entries */
+    char name[VFS_MAX_NAME];
+    while (fm_num_entries < 32 && vfs_readdir(fd, name, sizeof(name)) == 0) {
+        strcpy(fm_entries[fm_num_entries++], name);
+    }
+    
+    vfs_close(fd);
+    
+    /* Clamp selection */
+    if (fm_selected >= fm_num_entries) fm_selected = fm_num_entries - 1;
+    if (fm_selected < 0) fm_selected = 0;
+}
+
+static void fm_draw(void) {
+    int i;
+    
+    io_print("\033[2J\033[H");  /* Clear screen */
+    io_println("=== Tinx File Manager ===");
+    io_print("Path: ");
+    io_println(fm_current_path);
+    io_println("");
+    io_println("Files/Dirs:");
+    io_println("----------------------------------------");
+    
+    for (i = 0; i < fm_num_entries; i++) {
+        if (i == fm_selected) {
+            io_print("> ");
+        } else {
+            io_print("  ");
+        }
+        
+        /* Check if it's a directory */
+        struct vfs_stat stat_buf;
+        char full_path[VFS_MAX_PATH];
+        
+        if (strcmp(fm_current_path, "/") == 0) {
+            strcpy(full_path, "/");
+            strcat(full_path, fm_entries[i]);
+        } else {
+            strcpy(full_path, fm_current_path);
+            if (full_path[strlen(full_path)-1] != '/') {
+                strcat(full_path, "/");
+            }
+            strcat(full_path, fm_entries[i]);
+        }
+        
+        if (vfs_stat(full_path, &stat_buf) == 0 && stat_buf.type == VFS_TYPE_DIR) {
+            io_print("[D] ");
+        } else {
+            io_print("    ");
+        }
+        
+        io_println(fm_entries[i]);
+    }
+    
+    io_println("----------------------------------------");
+    io_println("Controls: UP/DOWN=navigate, ENTER=open, Q=quit");
+}
+
+int cmd_fm(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    
+    /* Initialize */
+    strcpy(fm_current_path, "/");
+    fm_selected = 0;
+    fm_offset = 0;
+    fm_refresh();
+    fm_draw();
+    
+    while (1) {
+        char c = io_getchar();
+        if (c == 0) continue;
+        
+        if (c == 'q' || c == 'Q') {
+            break;
+        } else if (c == 'n' || c == 'N' || c == 2) {  /* Down arrow or 'n' */
+            if (fm_selected < fm_num_entries - 1) {
+                fm_selected++;
+                fm_draw();
+            }
+        } else if (c == 'p' || c == 'P' || c == 1) {  /* Up arrow or 'p' */
+            if (fm_selected > 0) {
+                fm_selected--;
+                fm_draw();
+            }
+        } else if (c == '\n' || c == '\r') {
+            /* Open selected entry */
+            if (fm_num_entries > 0) {
+                char *entry = fm_entries[fm_selected];
+                
+                if (strcmp(entry, "..") == 0) {
+                    /* Go to parent */
+                    if (strcmp(fm_current_path, "/") != 0) {
+                        /* Find last slash */
+                        int len = strlen(fm_current_path);
+                        while (len > 0 && fm_current_path[len-1] == '/') len--;
+                        while (len > 0 && fm_current_path[len-1] != '/') len--;
+                        if (len == 0) {
+                            strcpy(fm_current_path, "/");
+                        } else {
+                            fm_current_path[len] = '\0';
+                            if (len == 1) fm_current_path[1] = '\0';
+                        }
+                    }
+                    fm_refresh();
+                    fm_draw();
+                } else {
+                    /* Try to enter directory */
+                    char new_path[VFS_MAX_PATH];
+                    if (strcmp(fm_current_path, "/") == 0) {
+                        strcpy(new_path, "/");
+                        strcat(new_path, entry);
+                    } else {
+                        strcpy(new_path, fm_current_path);
+                        if (new_path[strlen(new_path)-1] != '/') {
+                            strcat(new_path, "/");
+                        }
+                        strcat(new_path, entry);
+                    }
+                    
+                    struct vfs_stat stat_buf;
+                    if (vfs_stat(new_path, &stat_buf) == 0 && stat_buf.type == VFS_TYPE_DIR) {
+                        strcpy(fm_current_path, new_path);
+                        fm_refresh();
+                        fm_draw();
+                    } else {
+                        io_print("Selected file: ");
+                        io_println(entry);
+                        io_print("Press any key to continue...");
+                        io_getchar();
+                        fm_draw();
+                    }
+                }
+            }
+        }
+    }
+    
+    io_print("\033[2J\033[H");
     return 0;
 }

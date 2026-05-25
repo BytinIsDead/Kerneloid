@@ -1,5 +1,5 @@
 /*
- * Tinx Shell - A minimal POSIX-like shell
+ * Tinx Shell - A minimal POSIX-like shell with VFS support
  */
 
 #ifndef TINX_SHELL_H
@@ -50,5 +50,13 @@ int cmd_clear(int argc, char **argv);
 int cmd_exit(int argc, char **argv);
 int cmd_version(int argc, char **argv);
 int cmd_cpuinfo(int argc, char **argv);
+
+/* New VFS commands */
+int cmd_mkdir(int argc, char **argv);
+int cmd_touch(int argc, char **argv);
+int cmd_rm(int argc, char **argv);
+int cmd_stat(int argc, char **argv);
+int cmd_write(int argc, char **argv);
+int cmd_fm(int argc, char **argv);
 
 #endif /* TINX_SHELL_H */

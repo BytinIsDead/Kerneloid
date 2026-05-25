@@ -79,6 +79,7 @@ static struct shell_builtin builtins[] = {
     {"stat", cmd_stat},
     {"write", cmd_write},
     {"fm", cmd_fm},
+    {"browser", cmd_browser},
     {0, 0}
 };
 
@@ -183,6 +184,8 @@ int cmd_help(int argc, char **argv) {
     io_println("  exit     - Exit shell");
     io_println("  version  - Show version info");
     io_println("  cpuinfo  - Show CPU information");
+    io_println("  fm       - Launch file manager");
+    io_println("  browser  - Launch TUI web browser");
     
     return 0;
 }
@@ -623,5 +626,49 @@ int cmd_fm(int argc, char **argv) {
     }
     
     io_print("\033[2J\033[H");
+    return 0;
+}
+
+/* Install command - install kernel to disk */
+int cmd_install(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    
+    io_println("=== Tinx Disk Installer ===");
+    io_println("");
+    
+    /* Initialize disk subsystem */
+    if (install_init() != INSTALL_OK) {
+        io_println("Error: No disk detected");
+        return 1;
+    }
+    
+    io_println("Installing to disk 0...");
+    
+    /* Get kernel binary from embedded data */
+    extern const uint8_t _binary_build_tinx_bin_start[];
+    extern const uint8_t _binary_build_tinx_bin_end[];
+    
+    size_t kernel_size = (size_t)(_binary_build_tinx_bin_end - _binary_build_tinx_bin_start);
+    
+    if (install_to_disk(0, _binary_build_tinx_bin_start, kernel_size) == INSTALL_OK) {
+        io_println("");
+        io_println("Installation successful!");
+        io_println("You can now boot from this disk.");
+        
+        /* Verify installation */
+        io_println("");
+        io_println("Verifying installation...");
+        if (install_verify(0) == 0) {
+            io_println("Verification passed!");
+        } else {
+            io_println("Warning: Verification failed!");
+        }
+    } else {
+        io_println("");
+        io_println("Installation failed!");
+        return 1;
+    }
+    
     return 0;
 }

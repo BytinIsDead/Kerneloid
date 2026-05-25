@@ -1,6 +1,5 @@
 ```
-# Compiled and build artifacts
-*.o
-*.bin
+# Build artifacts
 build/
+*.bin
 ```

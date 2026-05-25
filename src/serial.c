@@ -85,6 +85,12 @@ void serial_write_hex32(uint32_t value) {
     serial_write_hex_digit(value & 0xF);
 }
 
+void serial_write_hex8(uint8_t value) {
+    serial_write_str("0x");
+    serial_write_hex_digit((value >> 4) & 0xF);
+    serial_write_hex_digit(value & 0xF);
+}
+
 void serial_write_dec32(uint32_t value) {
     if (value == 0) {
         serial_write_byte('0');

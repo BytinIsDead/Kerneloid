@@ -58,5 +58,7 @@ int cmd_rm(int argc, char **argv);
 int cmd_stat(int argc, char **argv);
 int cmd_write(int argc, char **argv);
 int cmd_fm(int argc, char **argv);
+int cmd_browser(int argc, char **argv);
+int cmd_install(int argc, char **argv);
 
 #endif /* TINX_SHELL_H */

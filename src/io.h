@@ -30,4 +30,14 @@ static inline void io_wait(void) {
     asm volatile ("outb %%al, $0x80" : : "a"(0));
 }
 
+static inline void outw(uint16_t port, uint16_t value) {
+    asm volatile ("outw %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static inline uint16_t inw(uint16_t port) {
+    uint16_t ret;
+    asm volatile ("inw %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
 #endif /* IO_H */

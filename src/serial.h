@@ -41,6 +41,9 @@ void serial_write_hex_digit(uint8_t nibble);
 /* Write a hex number (32-bit) */
 void serial_write_hex32(uint32_t value);
 
+/* Write a hex number (8-bit/byte) */
+void serial_write_hex8(uint8_t value);
+
 /* Write a decimal number */
 void serial_write_dec32(uint32_t value);
 

@@ -1,12 +1,26 @@
+/*
+ * Tinx Kernel - Main Kernel Implementation
+ */
+
 #include "kernel.h"
 #include "io.h"
+#include "serial.h"
+#include "gdt.h"
 #include "shell.h"
+#include "vfs.h"
 
 /* Multiboot magic number */
 #define MULTIBOOT_BOOTLOADER_MAGIC 0x2BADB002
 
 /* Interrupt handler declaration */
-void isr_handler(uint32_t* regs);
+typedef struct {
+    uint32_t ds;
+    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
+    uint32_t int_no, err_code;
+    uint32_t eip, cs, eflags, useresp, ss;
+} regs_t;
+
+void isr_handler(regs_t* regs);
 
 /* IDT entry structure */
 struct idt_entry {
@@ -65,7 +79,7 @@ extern void isr31(void);
 static void idt_set_gate(uint8_t num, uint32_t base) {
     idt[num].base_low = base & 0xFFFF;
     idt[num].base_high = (base >> 16) & 0xFFFF;
-    idt[num].sel = 0x08;  /* Kernel code segment */
+    idt[num].sel = GDT_KERNEL_CODE_SEL;  /* Use defined selector */
     idt[num].zero = 0;
     idt[num].flags = 0x8E;  /* Present, ring 0, 32-bit interrupt gate */
 }
@@ -75,8 +89,11 @@ static void idt_load(void) {
     asm volatile ("lidtl %0" :: "m"(idtp));
 }
 
-/* Initialize IDT */
+/* Initialize GDT and IDT */
 static void idt_init(void) {
+    /* First initialize GDT for proper segment selectors */
+    gdt_init();
+    
     idtp.limit = sizeof(idt) - 1;
     idtp.base = (uint32_t)&idt;
     
@@ -151,7 +168,7 @@ static void idt_init(void) {
 }
 
 /* ISR handler called from assembly stub */
-void isr_handler(uint32_t* regs) {
+void isr_handler(regs_t* regs) {
     const char* exception_messages[] = {
         "Division By Zero",
         "Debug",
@@ -187,24 +204,35 @@ void isr_handler(uint32_t* regs) {
         "Reserved"
     };
     
-    /* 
-     * Stack layout when isr_handler is called (from boot.asm):
-     * After pusha and segment save, we push eax (pointer to esp)
-     * So regs points to the saved DS value
-     * [regs+0]  = saved DS (segment register we pushed)
-     * [regs+1]  = EDI (first pushed by pusha)
-     * [regs+2]  = ESI
-     * [regs+3]  = EBP
-     * [regs+4]  = ESP (original, pushed by pusha)
-     * [regs+5]  = EBX
-     * [regs+6]  = EDX
-     * [regs+7]  = ECX
-     * [regs+8]  = EAX
-     * [regs+9]  = interrupt number
-     * [regs+10] = error code
-     */
-    uint32_t int_num = regs[9];   // interrupt number
-    uint32_t err_code = regs[10]; // error code
+    uint32_t int_num = regs->int_no;
+    uint32_t err_code = regs->err_code;
+    
+    /* Dump CPU context to serial for debugging */
+    serial_writeln("");
+    serial_writeln("=== CPU Context Dump ===");
+    serial_write_str("EAX: "); serial_write_hex32(regs->eax);
+    serial_write_str("  EBX: "); serial_write_hex32(regs->ebx);
+    serial_write_str("  ECX: "); serial_write_hex32(regs->ecx);
+    serial_writeln("");
+    serial_write_str("EDX: "); serial_write_hex32(regs->edx);
+    serial_write_str("  ESI: "); serial_write_hex32(regs->esi);
+    serial_write_str("  EDI: "); serial_write_hex32(regs->edi);
+    serial_writeln("");
+    serial_write_str("EBP: "); serial_write_hex32(regs->ebp);
+    serial_write_str("  ESP: "); serial_write_hex32(regs->esp_dummy);
+    serial_write_str("  EIP: "); serial_write_hex32(regs->eip);
+    serial_writeln("");
+    serial_write_str("CS:  "); serial_write_hex32(regs->cs);
+    serial_write_str("  DS:  "); serial_write_hex32(regs->ds);
+    serial_write_str("  EFLAGS: "); serial_write_hex32(regs->eflags);
+    serial_writeln("");
+    serial_write_str("Interrupt: 0x"); 
+    serial_write_hex32(int_num);
+    serial_write_str(" (");
+    serial_write_str(exception_messages[int_num < 32 ? int_num : 31]);
+    serial_writeln(")");
+    serial_write_str("Error Code: 0x"); serial_write_hex32(err_code);
+    serial_writeln("");
     
     if (int_num < 32) {
         /* CPU Exception */
@@ -239,14 +267,28 @@ void isr_handler(uint32_t* regs) {
     }
 }
 
-/* Panic function */
+/* Panic function with serial dump */
 __attribute__((noreturn)) void kernel_panic(const char* message) {
+    /* Disable interrupts */
+    asm volatile ("cli");
+    
+    /* Dump to serial first (more reliable for debugging) */
+    serial_writeln("");
+    serial_writeln("========================================");
+    serial_writeln("!!! KERNEL PANIC !!!");
+    serial_writeln("========================================");
+    serial_write_str("Reason: ");
+    serial_writeln(message);
+    serial_writeln("");
+    serial_writeln("System halted. Please check serial output for CPU context.");
+    
+    /* Display on VGA */
     io_print("\n\n*** KERNEL PANIC ***\n");
     io_print(message);
     io_print("\n\nSystem halted.\n");
+    io_print("Check serial port for debug information.\n");
     
     /* Halt forever */
-    asm volatile ("cli");
     while (1) {
         asm volatile ("hlt");
     }
@@ -263,6 +305,10 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
         }
     }
     
+    /* Initialize serial port FIRST for early debugging */
+    serial_init();
+    serial_writeln("Tinx Kernel starting...");
+    
     /* Initialize I/O */
     io_init();
     
@@ -276,6 +322,12 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     /* Initialize IDT and interrupts */
     idt_init();
     io_println("Interrupt Descriptor Table initialized.");
+    serial_writeln("IDT initialized successfully");
+    
+    /* Initialize VFS subsystem */
+    vfs_init();
+    io_println("Virtual File System initialized.");
+    serial_writeln("VFS initialized successfully");
     
     /* Print memory info if available */
     if (mboot_info && (mboot_info[0] & (1 << 6))) {

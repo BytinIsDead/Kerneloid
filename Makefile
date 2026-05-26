@@ -1,4 +1,4 @@
-# Tinx Kernel Makefile
+# Tinx Kernel Makefile - XNU-inspired with VirtualBox Drivers
 
 # Compiler settings (use native gcc with -m32 for 32-bit output)
 CC = gcc

@@ -253,12 +253,10 @@ isr_common_stub:
     
     ; Pass pointer to regs structure (the saved state on stack)
     ; The C handler expects a pointer to the full register save area
-    ; We need to align stack to 16 bytes before call
     mov eax, esp
     push eax                        ; Push pointer to regs
-    sub esp, 4                      ; Align stack to 16 bytes
     call isr_handler
-    add esp, 8                      ; Clean up argument and alignment padding
+    add esp, 4                      ; Clean up argument
     
     ; Restore segment registers
     pop eax

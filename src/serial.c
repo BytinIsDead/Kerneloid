@@ -39,12 +39,24 @@ int serial_is_transmit_empty(void) {
 }
 
 void serial_write_byte(uint8_t byte) {
+    /* Always mirror to QEMU debugcon 0xE9 for -debugcon capture, even before init */
+    __asm__ volatile ("outb %0, %1" :: "a"(byte), "Nd"((uint16_t)0xE9));
     if (!serial_initialized) {
-        return;
+        /* Still try to send to COM1 even if not initialized for early boot */
+        /* Wait a bit then try */
+        for (volatile int i=0;i<1000;i++) __asm__ volatile("pause");
+        // return; // don't return, try anyway
     }
     
-    /* Wait until transmit buffer is empty */
-    while (!serial_is_transmit_empty());
+    /* Wait until transmit buffer is empty - but don't hang forever if serial not ready */
+    int timeout = 10000;
+    while (!serial_is_transmit_empty() && timeout-- > 0) {
+        __asm__ volatile("pause");
+    }
+    if (timeout <= 0) {
+        /* If serial not ready, still continue */
+        return;
+    }
     
     outb(SERIAL_COM1_BASE + SERIAL_THR, byte);
 }

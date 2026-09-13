@@ -160,11 +160,12 @@ void hal_init(void) {
     outb(PIC2_DATA, 0xFF);
     io_wait();
 
-    /* Init PIT at 100 Hz */
-    pit_init();
+    /* Init PIT at 100 Hz - DISABLED for debug to avoid spurious IRQ */
+    // pit_init();
+    serial_writeln("[HAL] PIT disabled for debug - no timer IRQ");
 
     hal_initialized = 1;
-    serial_writeln("[HAL] HAL initialized (PIC remapped, PIT 100Hz)");
+    serial_writeln("[HAL] HAL initialized (PIC remapped, no PIT)");
 
     hal_sti();
 }
@@ -255,11 +256,16 @@ void hal_io_wait_wrapper(void) {
     hal_io_wait();
 }
 
-/* Context switching - delegate to assembly stub in boot.asm */
+/* Context switching - delegate to assembly stub in boot.asm
+   DISABLED for debug: current asm is incomplete for IRQ context and corrupts stack.
+   Make it a no-op so scheduler can rotate runqueue without crashing. */
 void hal_context_switch(tcb_t* from, tcb_t* to) {
     if (!from || !to) return;
     if (from == to) return;
-    hal_context_switch_asm(from, to);
+    /* DEBUG: no-op to avoid triple fault */
+    (void)from; (void)to;
+    serial_writeln("[HAL] hal_context_switch called (no-op debug)");
+    // hal_context_switch_asm(from, to);
 }
 
 /* Yield - trigger scheduler */
@@ -307,19 +313,22 @@ void pit_init(void) {
     serial_writeln("[HAL] PIT initialized at 100 Hz");
 }
 
-/* PIT IRQ0 handler - increments ticks and calls scheduler - non-static for kernel exposure */
+/* PIT IRQ0 handler - increments ticks and calls scheduler - non-static for kernel exposure
+   NOTE: For debug, scheduler_schedule is DISABLED to avoid hal_context_switch hang.
+   Preemptive switch from IRQ is unsafe with current hal_context_switch_asm (cooperative).
+   We only tick and let main loop yield. */
 void pit_irq_handler(uint32_t vector, void* frame) {
     (void)frame;
     (void)vector;
     hal_pit_ticks++;
 
     extern void scheduler_tick(void);
-    extern void scheduler_schedule(void);
-    extern int scheduler_is_initialized(void);
+    // extern void scheduler_schedule(void);
+    // extern int scheduler_is_initialized(void);
     scheduler_tick();
-    if (scheduler_is_initialized()) {
-        scheduler_schedule();
-    }
+    // if (scheduler_is_initialized()) {
+    //     scheduler_schedule(); /* DISABLED - causes triple fault due to IRQ context switch bug */
+    // }
 }
 
 uint64_t pit_get_ticks(void) {

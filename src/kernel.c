@@ -321,32 +321,49 @@ void isr_handler(regs_t* regs) {
         "Reserved"
     };
     
-    /* Dump CPU context to serial for debugging */
-    serial_writeln("");
-    serial_writeln("=== CPU Context Dump ===");
-    serial_write_str("EAX: "); serial_write_hex32(regs->eax);
-    serial_write_str("  EBX: "); serial_write_hex32(regs->ebx);
-    serial_write_str("  ECX: "); serial_write_hex32(regs->ecx);
-    serial_writeln("");
-    serial_write_str("EDX: "); serial_write_hex32(regs->edx);
-    serial_write_str("  ESI: "); serial_write_hex32(regs->esi);
-    serial_write_str("  EDI: "); serial_write_hex32(regs->edi);
-    serial_writeln("");
-    serial_write_str("EBP: "); serial_write_hex32(regs->ebp);
-    serial_write_str("  ESP: "); serial_write_hex32(regs->esp_dummy);
-    serial_write_str("  EIP: "); serial_write_hex32(regs->eip);
-    serial_writeln("");
-    serial_write_str("CS:  "); serial_write_hex32(regs->cs);
-    serial_write_str("  DS:  "); serial_write_hex32(regs->ds);
-    serial_write_str("  EFLAGS: "); serial_write_hex32(regs->eflags);
-    serial_writeln("");
-    serial_write_str("Interrupt: 0x"); 
-    serial_write_hex32(int_num);
-    serial_write_str(" (");
-    serial_write_str(exception_messages[int_num < 32 ? int_num : 31]);
-    serial_writeln(")");
-    serial_write_str("Error Code: 0x"); serial_write_hex32(err_code);
-    serial_writeln("");
+    /* Dump CPU context to serial for debugging - ONLY for CPU exceptions (0-31), not for IRQs */
+    if (int_num < 32) {
+        serial_writeln("");
+        serial_writeln("=== CPU Context Dump ===");
+        serial_write_str("EAX: "); serial_write_hex32(regs->eax);
+        serial_write_str("  EBX: "); serial_write_hex32(regs->ebx);
+        serial_write_str("  ECX: "); serial_write_hex32(regs->ecx);
+        serial_writeln("");
+        serial_write_str("EDX: "); serial_write_hex32(regs->edx);
+        serial_write_str("  ESI: "); serial_write_hex32(regs->esi);
+        serial_write_str("  EDI: "); serial_write_hex32(regs->edi);
+        serial_writeln("");
+        serial_write_str("EBP: "); serial_write_hex32(regs->ebp);
+        serial_write_str("  ESP: "); serial_write_hex32(regs->esp_dummy);
+        serial_write_str("  EIP: "); serial_write_hex32(regs->eip);
+        serial_writeln("");
+        serial_write_str("CS:  "); serial_write_hex32(regs->cs);
+        serial_write_str("  DS:  "); serial_write_hex32(regs->ds);
+        serial_write_str("  EFLAGS: "); serial_write_hex32(regs->eflags);
+        serial_writeln("");
+        serial_write_str("Interrupt: 0x"); 
+        serial_write_hex32(int_num);
+        serial_write_str(" (");
+        serial_write_str(exception_messages[int_num < 32 ? int_num : 31]);
+        serial_writeln(")");
+        serial_write_str("Error Code: 0x"); serial_write_hex32(err_code);
+        serial_writeln("");
+    } else if (int_num >= 0x20 && int_num < 0x30) {
+        /* IRQ - don't dump, just handle */
+        // serial_write_str("[IRQ] vector 0x"); serial_write_hex32(int_num); serial_writeln("");
+    } else {
+        /* Other vectors - brief log */
+        serial_write_str("[ISR] vector 0x");
+        serial_write_hex32(int_num);
+        serial_writeln(" (no dump)");
+        // return early to avoid exception handling below
+        // but still need to send EOI if it's an IRQ
+        if (int_num >= 0x20 && int_num < 0x30) {
+            uint8_t irq = (uint8_t)(int_num - 0x20);
+            extern void hal_ack_irq(uint32_t);
+            // will be handled below
+        }
+    }
     
     if (int_num < 32) {
         /* CPU Exception */
@@ -443,18 +460,48 @@ __attribute__((noreturn)) void kernel_panic(const char* message) {
 
 /* Main kernel function */
 void kernel_main(uint32_t magic, uint32_t* mboot_info) {
-    /* Verify multiboot magic number */
-    if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-        /* Can't use io functions yet, just halt */
-        asm volatile ("cli");
-        while (1) {
-            asm volatile ("hlt");
-        }
-    }
-    
-    /* Initialize serial port FIRST for early debugging */
+    /* Initialize serial port FIRST for early debugging - before magic check so we can report */
     serial_init();
     serial_writeln("Tinx Kernel starting...");
+    /* Early VGA canary - direct write to 0xB8000 to confirm boot reached kernel_main */
+    volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
+    vga[0] = (uint16_t)('K' | (0x0F << 8));
+    vga[1] = (uint16_t)('E' | (0x0A << 8));
+    /* Debug: also write to QEMU debug port 0xE9 for -debugcon */
+    for (const char *p = "[BOOT] kernel_main entered\r\n"; *p; p++) {
+        __asm__ volatile ("outb %0, %1" :: "a"(*p), "Nd"((uint16_t)0xE9));
+    }
+    /* Verify multiboot magic - warn but don't halt, to allow QEMU -kernel direct boot */
+    serial_write_str("[BOOT] magic=0x");
+    serial_write_hex32(magic);
+    serial_write_str(" mboot_info=0x");
+    serial_write_hex32((uint32_t)(uintptr_t)mboot_info);
+    serial_writeln("");
+    for (const char *p = "[BOOT] magic printed\r\n"; *p; p++) __asm__ volatile ("outb %0, %1" :: "a"(*p), "Nd"((uint16_t)0xE9));
+    if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
+        serial_write_str("[WARN] Bad multiboot magic 0x");
+        serial_write_hex32(magic);
+        serial_writeln(" expected 0x2BADB002 - continuing anyway");
+        /* Also warn via VGA */
+        vga[2] = (uint16_t)('!' | (0x0C << 8));
+        vga[3] = (uint16_t)('M' | (0x0C << 8));
+    } else {
+        serial_writeln("[BOOT] Multiboot magic OK");
+        vga[2] = (uint16_t)('O' | (0x0A << 8));
+        vga[3] = (uint16_t)('K' | (0x0A << 8));
+    }
+    if (mboot_info) {
+        serial_write_str("[BOOT] mboot flags=0x");
+        serial_write_hex32(mboot_info[0]);
+        serial_writeln("");
+        if (mboot_info[0] & (1<<6)) {
+            serial_write_str("[BOOT] mem_lower=");
+            serial_write_dec32(mboot_info[1]);
+            serial_write_str(" mem_upper=");
+            serial_write_dec32(mboot_info[2]);
+            serial_writeln("");
+        }
+    }
     
     /* Initialize I/O */
     io_init();
@@ -471,37 +518,28 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     io_println("Interrupt Descriptor Table initialized.");
     serial_writeln("IDT initialized successfully");
 
-    /* Initialize HAL (PIC remap, PIT 100Hz, CPU features) */
+    /* Re-enabled HAL/Scheduler with debug no-op switch to test boot */
+    serial_writeln("[BOOT] hal_init...");
     hal_init();
     io_println("HAL initialized (PIC, PIT 100Hz, CPU features).");
     serial_writeln("HAL initialized successfully");
 
-    /* Initialize Scheduler (TCB pool + runqueue + idle task) */
+    serial_writeln("[BOOT] scheduler_init...");
     scheduler_init();
     io_println("Scheduler initialized (runqueue, time slicing, preemption).");
     serial_writeln("Scheduler initialized successfully");
 
-    /* Legacy TCB init - already done by scheduler_init, but keep for compat */
-    /* tcb_init(); - scheduler_init already called it */
-
     /* Register PIT IRQ0 handler via HAL - 100Hz, vector 0x20 (IRQ0) */
+    serial_writeln("[BOOT] register PIT handler...");
     hal_register_isr(0x20, pit_irq_handler);
-    /* pit_init already called inside hal_init; verified PIT at 0x40/0x43 set 100Hz */
     hal_enable_irq(0); /* Ensure timer IRQ unmasked */
-
-    /* Ensure IDT handles IRQs 32-47 (remapped PIC vectors 0x20-0x2F) - installed in idt_init above */
     io_println("IRQ vectors 32-47 ready (PIC remapped 0x20-0x2F).");
     serial_writeln("IRQ vectors 32-47 ready");
 
-    /* Initialize IPC subsystem */
-    ipc_init();
-    io_println("IPC subsystem initialized.");
-    serial_writeln("IPC initialized successfully");
-
-    /* Initialize Syscall layer (installs int 0x80 trap gate DPL3) */
-    syscall_init();
-    io_println("Syscall layer initialized (int 0x80).");
-    serial_writeln("Syscall initialized successfully");
+    /* IPC/Syscall still disabled for now - will re-enable after HAL test */
+    serial_writeln("[BOOT] Skipping IPC/Syscall for now");
+    // ipc_init();
+    // syscall_init();
     
     /* Initialize VFS subsystem */
     vfs_init();
@@ -536,34 +574,25 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
         }
     }
 
-    /* AHCI init - scan PCI for AHCI BAR; placeholder with dummy MMIO probe */
-    {
-        static struct ahci_controller ahci_ctrl;
-        /* In real hardware we would scan PCI class 0x01 subclass 0x06.
-           For VirtualBox, AHCI typically at 00:1F.2 or similar.
-           Here we attempt init at common MMIO 0xFEBF0000 if present, else use RAM disk fallback.
-           We call ahci_init with a probed address; failure is non-fatal. */
-        uintptr_t probe = 0xFEBF0000;
-        /* Check if that address looks like AHCI via reading CAP (0xFF would be no device) */
-        /* We do a safe probe by checking if memory is accessible; for now just try and ignore */
-        /* Attempt init but don't panic on failure */
-        if(ahci_init(&ahci_ctrl, probe)==0){
-            int drives = ahci_detect_drives(&ahci_ctrl);
-            if(drives>0){
-                io_print("AHCI: detected "); io_print_dec((uint32_t)drives); io_println(" drive(s) (VFS can mount via vfs_mount_ahci)");
-                serial_writeln("[AHCI] drives detected");
-            } else {
-                serial_writeln("[AHCI] no drives on probe, using RAM disk");
-            }
-        } else {
-            serial_writeln("[AHCI] probe failed, VFS remains on RAM disk");
-        }
-        /* Also note VFS AHCI mount helper exists: vfs_mount_ahci() */
-        (void)ahci_ctrl;
-    }
-
-    /* Run IPC demo to verify capability */
-    ipc_demo();
+    /* DEBUG: AHCI/IPC demo disabled for minimal boot */
+    serial_writeln("[DEBUG] Skipping AHCI and IPC demo for minimal boot");
+    // {
+    //     static struct ahci_controller ahci_ctrl;
+    //     uintptr_t probe = 0xFEBF0000;
+    //     if(ahci_init(&ahci_ctrl, probe)==0){
+    //         int drives = ahci_detect_drives(&ahci_ctrl);
+    //         if(drives>0){
+    //             io_print("AHCI: detected "); io_print_dec((uint32_t)drives); io_println(" drive(s) (VFS can mount via vfs_mount_ahci)");
+    //             serial_writeln("[AHCI] drives detected");
+    //         } else {
+    //             serial_writeln("[AHCI] no drives on probe, using RAM disk");
+    //         }
+    //     } else {
+    //         serial_writeln("[AHCI] probe failed, VFS remains on RAM disk");
+    //     }
+    //     (void)ahci_ctrl;
+    // }
+    // ipc_demo();
     
     /* Print memory info if available */
     if (mboot_info && (mboot_info[0] & (1 << 6))) {
@@ -582,16 +611,25 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     io_println("");
     io_println("System ready.");
     io_println("Tinx kernel booted successfully!");
+    serial_writeln("[BOOT] System ready - entering shell");
+    serial_writeln("[BOOT] Tinx kernel booted successfully!");
     
     /* Start interactive shell */
     struct shell_state state;
+    serial_writeln("[BOOT] shell_init...");
     shell_init(&state);
+    serial_writeln("[BOOT] shell_init done");
     g_shell_current = &state;
+    serial_writeln("[BOOT] shell_run...");
     shell_run(&state);
+    serial_writeln("[BOOT] shell_run done");
     
     char prompt[128];
     shell_build_prompt(&state, prompt, sizeof(prompt));
     io_print(prompt);
+    serial_write_str("[SHELL] prompt: ");
+    serial_writeln(prompt);
+    serial_writeln("[SHELL] ready - type commands, try 'help'");
 
     char cmd_line[SHELL_MAX_CMD_LEN];
     int cmd_pos = 0;
@@ -599,7 +637,12 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     
     while (1) {
         char c = io_getchar();
-        if (c == 0) continue;
+        if (c == 0) {
+            /* Also check serial input as fallback */
+            // serial input not implemented, just halt to save CPU
+            __asm__ volatile ("hlt" ::: "memory");
+            continue;
+        }
 
         if (c == '\n' || c == '\r') {
             io_putchar('\n');

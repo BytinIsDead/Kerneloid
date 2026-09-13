@@ -1,6 +1,7 @@
 /*
  * Tinx Kernel - XNU-inspired Memory Management
  * Mach-style VM system with zones and maps
+ * Optimized: free-list heap with canary, aligned alloc, pmaps stack, complete vm_map ops
  */
 
 #ifndef XNU_MEMORY_H
@@ -102,5 +103,16 @@ kern_return_t pmap_remove(vm_map_t* map, mach_vm_address_t vaddr);
 void* kmalloc(size_t size);
 void kfree(void* ptr);
 void* kzalloc(size_t size);  /* Zero-filled allocation */
+size_t kmalloc_heap_used(void);
+size_t kmalloc_heap_total(void);
+size_t kmalloc_heap_free(void);
+
+/* New helpers */
+void* kmalloc_aligned(size_t size, size_t align);
+void kfree_aligned(void *ptr); /* free aligned allocs if kfree cannot detect */
+size_t kheap_used(void);
+size_t kheap_free(void);
+int kheap_check(void); /* 0=ok, -1=corruption */
+size_t kheap_total(void);
 
 #endif /* XNU_MEMORY_H */

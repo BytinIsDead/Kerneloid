@@ -87,4 +87,15 @@ void ipc_wait_for_message(tcb_t* task, int32_t from_tid);
 void ipc_waiting_task(tcb_t* task);
 void ipc_wakeup_waiters(int32_t port_id);
 
+/* Non-blocking variants (extra per IPC spec) */
+int32_t ipc_try_send(tcb_t* from, tcb_t* to, const ipc_message_t* msg);
+int32_t ipc_try_recv(tcb_t* task, ipc_message_t* msg, int32_t from_tid);
+
+/* Port-based helpers */
+int32_t ipc_port_send(int32_t port_id, tcb_t* from, const ipc_message_t* msg);
+int32_t ipc_port_recv(int32_t port_id, tcb_t* task, ipc_message_t* msg, int32_t from_tid);
+
+/* Demo / test helper (bonus) */
+void ipc_demo(void);
+
 #endif /* IPC_H */

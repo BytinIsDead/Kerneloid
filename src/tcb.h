@@ -125,9 +125,30 @@ void tcb_free(tcb_t* task);
 tcb_t* tcb_get_by_tid(int32_t tid);
 void tcb_set_state(tcb_t* task, task_state_t state);
 void tcb_set_priority(tcb_t* task, task_priority_t priority);
+tcb_t* tcb_create(void (*entry)(void*), void* arg, const char* name, task_priority_t priority);
+void tcb_setup_context(tcb_t* task, void (*entry)(void*), void* arg);
+void tcb_exit(void);
 
 /* Context switch primitives */
 void tcb_save_context(tcb_t* task, cpu_context_t* ctx);
 void tcb_load_context(cpu_context_t* ctx);
+
+/* Scheduler - runqueue and preemptive scheduling */
+void scheduler_init(void);
+int scheduler_is_initialized(void);
+void scheduler_add_task(tcb_t* task);
+void scheduler_remove_task(tcb_t* task);
+tcb_t* scheduler_pick_next(void);
+void scheduler_schedule(void);
+tcb_t* scheduler_get_current(void);
+void scheduler_tick(void);
+void scheduler_start(void);
+
+/* Task blocking/yielding */
+void tcb_yield(void);
+void tcb_block(tcb_t* task, task_state_t reason);
+void tcb_unblock(tcb_t* task);
+void tcb_sleep(uint32_t ms);
+uint64_t tcb_get_ticks(void);
 
 #endif /* TCB_H */

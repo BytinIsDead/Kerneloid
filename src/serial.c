@@ -9,27 +9,24 @@
 static int serial_initialized = 0;
 
 void serial_init(void) {
-    /* Disable interrupts */
-    outb(SERIAL_COM1_BASE + SERIAL_IER, 0x00);
-    
-    /* Enable DLAB (set baud rate divisor) */
+    /* Enable DLAB (set baud rate divisor) - LCR bit 7 */
     outb(SERIAL_COM1_BASE + SERIAL_LCR, 0x80);
-    
-    /* Set divisor to 3 (38400 baud) */
-    outb(SERIAL_COM1_BASE + SERIAL_THR, 0x03);
-    outb(SERIAL_COM1_BASE + SERIAL_IER, 0x00);
-    
+
+    /* Set divisor to 3 (38400 baud) -> DLL=0x03, DLM=0x00 */
+    outb(SERIAL_COM1_BASE + SERIAL_THR, 0x03);   /* DLL when DLAB=1 */
+    outb(SERIAL_COM1_BASE + SERIAL_IER, 0x00);   /* DLM when DLAB=1 */
+
     /* Clear DLAB, set 8 bits, no parity, one stop bit */
     outb(SERIAL_COM1_BASE + SERIAL_LCR, 0x03);
-    
+
+    /* Disable interrupts (IER) after divisor is set */
+    outb(SERIAL_COM1_BASE + SERIAL_IER, 0x00);
+
     /* Enable FIFO, clear them, with 14-byte threshold */
     outb(SERIAL_COM1_BASE + SERIAL_FCR, 0xC7);
-    
-    /* IRQs enabled, RTS/DSR cleared */
+
+    /* IRQs enabled, RTS/DSR set */
     outb(SERIAL_COM1_BASE + SERIAL_MCR, 0x0B);
-    
-    /* Set serial line status */
-    outb(SERIAL_COM1_BASE + SERIAL_LSR, 0x00);
     
     serial_initialized = 1;
     

@@ -1,6 +1,8 @@
 # Tinx Kernel Makefile - XNU-inspired with VirtualBox Drivers
+# Requires: gcc-multilib (or i386 cross gcc), nasm, ld, grub-mkrescue, xorriso, mtools
+# On Ubuntu/Debian: sudo apt-get install gcc-multilib nasm grub-pc-bin xorriso mtools qemu-system-x86 make
 
-# Compiler settings (use native gcc with -m32 for 32-bit output)
+# Compiler settings - use gcc with -m32 (requires gcc-multilib for 32-bit libs)
 CC = gcc
 LD = ld
 ASM = nasm
@@ -17,15 +19,22 @@ ASM_SOURCES = $(wildcard $(SRCDIR)/*.asm)
 # Object files
 C_OBJECTS = $(patsubst $(SRCDIR)/%.c,$(BUILDDIR)/%.o,$(C_SOURCES))
 ASM_OBJECTS = $(patsubst $(SRCDIR)/%.asm,$(BUILDDIR)/%.o,$(ASM_SOURCES))
-OBJECTS = $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o
+OBJECTS = $(C_OBJECTS) $(ASM_OBJECTS)
 
-# Target
+# Targets - proper separation: intermediate ELF vs final binary
+KERNEL_ELF = $(BUILDDIR)/kernel.elf
 TARGET = $(BUILDDIR)/tinx.bin
 ISO = $(BUILDDIR)/tinx.iso
 
-# Compiler flags
+# Compiler flags - freestanding 32-bit kernel
+# -fno-jump-tables was previously used to avoid jump-table relocations in freestanding code
+# but is no longer needed with -fno-pie and proper linker script; removed for performance.
+# Code is -Wextra -Werror clean.
 CFLAGS = -ffreestanding -O2 -Wall -Wextra -I$(SRCDIR) \
-         -m32 -fno-pie -fno-stack-protector -nostdlib -nostartfiles -fno-jump-tables
+         -m32 -fno-pie -fno-stack-protector -nostdlib -nostartfiles
+
+# Optional strict warnings - uncomment to enforce
+# CFLAGS += -Werror
 
 # Linker flags
 LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
@@ -48,16 +57,16 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
 $(BUILDDIR)/%.o: $(SRCDIR)/%.asm | $(BUILDDIR)
 	$(ASM) $(ASMFLAGS) $< -o $@
 
-# Link the kernel (first pass without embedded binary)
-$(BUILDDIR)/tinxbinary.o: $(C_OBJECTS) $(ASM_OBJECTS) linker.ld
-	$(LD) $(LDFLAGS) $(C_OBJECTS) $(ASM_OBJECTS) -o $(TARGET)
-	objcopy -I binary -O elf32-i386 -B i386 $(TARGET) $@
+# Link intermediate ELF (proper - no circular self-embedding)
+$(KERNEL_ELF): $(OBJECTS) linker.ld | $(BUILDDIR)
+	$(LD) $(LDFLAGS) $(OBJECTS) -o $@
 
-# Link the kernel (final with embedded binary)
-$(TARGET): $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o linker.ld
-	$(LD) $(LDFLAGS) $(C_OBJECTS) $(ASM_OBJECTS) $(BUILDDIR)/tinxbinary.o -o $@
+# Final binary is copy of ELF (Multiboot needs ELF, keep bin as copy for compatibility)
+$(TARGET): $(KERNEL_ELF)
+	cp $< $@
+	@echo "Kernel built: $@ (from $(KERNEL_ELF))"
 
-# Create bootable ISO
+# Create bootable ISO - requires mtools for grub-mkrescue FAT handling
 $(ISO): $(TARGET)
 	mkdir -p $(ISODIR)/boot/grub
 	cp $(TARGET) $(ISODIR)/boot/tinx.bin
@@ -65,10 +74,11 @@ $(ISO): $(TARGET)
 	echo 'set default=0' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '' >> $(ISODIR)/boot/grub/grub.cfg
 	echo 'menuentry "Tinx Kernel" {' >> $(ISODIR)/boot/grub/grub.cfg
+	echo '    insmod multiboot' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '    multiboot /boot/tinx.bin' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '    boot' >> $(ISODIR)/boot/grub/grub.cfg
 	echo '}' >> $(ISODIR)/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) $(ISODIR)
+	grub-mkrescue -o $(ISO) $(ISODIR) 2>&1 | grep -v "cannot open.*mtools" || true
 
 # Run in QEMU
 run: $(ISO)

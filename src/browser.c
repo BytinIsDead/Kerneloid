@@ -18,13 +18,19 @@ static int browser_strcmp(const char *s1, const char *s2) {
     return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
+static int browser_strncmp(const char *s1, const char *s2, size_t n) {
+    while (n && *s1 && (*s1 == *s2)) { s1++; s2++; n--; }
+    if (n == 0) return 0;
+    return *(unsigned char *)s1 - *(unsigned char *)s2;
+}
+
 static size_t browser_strlen(const char *s) {
     size_t len = 0;
     while (*s++) len++;
     return len;
 }
 
-static char* browser_strcat(char *dest, const char *src) {
+static __attribute__((unused)) char* browser_strcat(char *dest, const char *src) {
     char *d = dest;
     while (*d) d++;
     while ((*d++ = *src++));
@@ -33,6 +39,7 @@ static char* browser_strcat(char *dest, const char *src) {
 
 #define strcpy browser_strcpy
 #define strcmp browser_strcmp
+#define strncmp browser_strncmp
 #define strlen browser_strlen
 #define strcat browser_strcat
 
@@ -51,7 +58,7 @@ void browser_init(struct browser_state* state) {
 }
 
 static void browser_clear_screen(void) {
-    io_print("\033[2J\033[H");
+    vga_clear();
 }
 
 static void browser_draw_ui(struct browser_state* state) {
@@ -200,9 +207,13 @@ int browser_navigate(struct browser_state* state, const char* url) {
         return 0;
     }
     
-    /* Check for file:// URL */
-    if (browser_strlen(url) > 7 && browser_strcmp(url, "file://") == 0) {
+    /* Check for file:// URL - use strncmp with length check */
+    if (browser_strlen(url) >= 7 && browser_strncmp(url, "file://", 7) == 0) {
         const char* path = url + 7;  /* Skip "file://" */
+        if (*path == '\0') {
+            /* file:// with no path -> treat as root or error */
+            path = "/";
+        }
         strcpy(state->current_url, url);
         
         /* Load file via VFS */
@@ -210,20 +221,29 @@ int browser_navigate(struct browser_state* state, const char* url) {
         if (fd >= 0) {
             vfs_ssize_t bytes_read = vfs_read(fd, state->page_content, BROWSER_MAX_PAGE_SIZE - 1);
             vfs_close(fd);
-            
-            if (bytes_read > 0) {
+
+            if (bytes_read >= 0) {
+                if (bytes_read > (vfs_ssize_t)(BROWSER_MAX_PAGE_SIZE - 1)) bytes_read = BROWSER_MAX_PAGE_SIZE - 1;
                 state->page_content[bytes_read] = '\0';
-                state->content_length = bytes_read;
+                /* Ensure NUL termination even on truncation */
+                state->page_content[BROWSER_MAX_PAGE_SIZE - 1] = '\0';
+                state->content_length = (size_t)bytes_read;
                 state->status_code = HTTP_OK;
                 state->scroll_offset = 0;
                 strcpy(state->status_message, "Loaded");
-                
+
                 /* Add to history */
                 if (state->history_count < BROWSER_HISTORY_SIZE) {
                     strcpy(state->history[state->history_count++], url);
                     state->history_index = state->history_count - 1;
+                } else {
+                    /* Shift history if full */
+                    int h;
+                    for (h = 0; h < BROWSER_HISTORY_SIZE - 1; h++) strcpy(state->history[h], state->history[h+1]);
+                    strcpy(state->history[BROWSER_HISTORY_SIZE - 1], url);
+                    state->history_index = BROWSER_HISTORY_SIZE - 1;
                 }
-                
+
                 return 0;
             }
         }
@@ -269,12 +289,15 @@ void browser_render(struct browser_state* state) {
 int browser_input(struct browser_state* state, char c) {
     if (c == 'q' || c == 'Q') {
         return -1;  /* Signal to quit */
-    } else if (c == 'n' || c == 'N' || c == 2) {  /* Down */
-        if (state->scroll_offset < (int)state->content_length) {
+    } else if (c == 'n' || c == 'N' || c == KEY_DOWN) {  /* Down */
+        int max_offset = (int)state->content_length - (state->viewport_lines * 40);
+        if (max_offset < 0) max_offset = 0;
+        if (state->scroll_offset < max_offset) {
             state->scroll_offset += 40;  /* Scroll down by ~40 chars */
+            if (state->scroll_offset > max_offset) state->scroll_offset = max_offset;
             browser_render(state);
         }
-    } else if (c == 'p' || c == 'P' || c == 1) {  /* Up */
+    } else if (c == 'p' || c == 'P' || c == KEY_UP) {  /* Up */
         if (state->scroll_offset > 0) {
             state->scroll_offset -= 40;
             if (state->scroll_offset < 0) state->scroll_offset = 0;
@@ -317,6 +340,7 @@ int browser_forward(struct browser_state* state) {
 }
 
 void browser_parse_html(struct browser_state* state, const char* html, char* output, size_t max_len) {
+    (void)state;
     /* Very simple HTML tag stripper */
     size_t in_tag = 0;
     size_t out_idx = 0;

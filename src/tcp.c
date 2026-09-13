@@ -15,24 +15,27 @@ static char *tcp_memcpy(void *dest, const void *src, int n) {
 
 #define memcpy tcp_memcpy
 
-static uint16_t checksum_counter = 0;
+static __attribute__((unused)) uint16_t checksum_counter = 0;
 
 uint16_t tcp_checksum(const void *data, size_t len) {
-    const uint16_t *ptr = (const uint16_t *)data;
+    const uint8_t *ptr = (const uint8_t *)data;
     uint32_t sum = 0;
-    
+    /* Handle 16-bit words correctly even if unaligned and handle odd length per RFC 1071 */
     while (len > 1) {
-        sum += *ptr++;
+        uint16_t word = (uint16_t)ptr[0] | ((uint16_t)ptr[1] << 8);
+        /* Network order is big-endian; but for checksum we just sum host order and complement.
+           To be endian-independent, we assemble as little-endian consistent with x86. */
+        sum += word;
+        ptr += 2;
         len -= 2;
     }
-    
     if (len == 1) {
-        sum += *(const uint8_t *)ptr;
+        /* Odd byte: pad with zero high byte (RFC 1071) -> add as 0x00XX where XX is last byte */
+        uint16_t last = (uint16_t)*ptr;
+        sum += last;
     }
-    
-    sum = (sum >> 16) + (sum & 0xFFFF);
-    sum += (sum >> 16);
-    
+    /* Fold 32-bit sum to 16 bits */
+    while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);
     return (uint16_t)(~sum);
 }
 
@@ -40,17 +43,27 @@ uint32_t tcp_inet_addr(const char *addr) {
     uint32_t ip = 0;
     uint32_t part;
     int i;
-    
-    for (i = 0; i < 4 && addr; i++) {
+    if (!addr || *addr == '\0') return 0; /* 0.0.0.0 invalid */
+    for (i = 0; i < 4; i++) {
+        if (*addr < '0' || *addr > '9') return 0xFFFFFFFFU; /* INADDR_NONE */
         part = 0;
+        int digits = 0;
         while (*addr >= '0' && *addr <= '9') {
             part = part * 10 + (*addr - '0');
+            if (part > 255) return 0xFFFFFFFFU;
             addr++;
+            digits++;
+            if (digits > 3) return 0xFFFFFFFFU;
         }
         ip |= (part << (24 - i * 8));
-        if (*addr == '.') addr++;
+        if (i < 3) {
+            if (*addr != '.') return 0xFFFFFFFFU;
+            addr++;
+            if (*addr == '\0') return 0xFFFFFFFFU;
+        } else {
+            if (*addr != '\0') return 0xFFFFFFFFU; /* extra chars */
+        }
     }
-    
     return ip;
 }
 
@@ -194,7 +207,6 @@ int tcp_close(struct net_if *iface, int sock_fd) {
 }
 
 int tcp_process_packet(struct net_if *iface, const void *packet, size_t len) {
-    const struct eth_header *eth;
     const struct ip_header *ip;
     const struct tcp_header *tcp;
     int i;
@@ -203,7 +215,6 @@ int tcp_process_packet(struct net_if *iface, const void *packet, size_t len) {
         return -1;
     }
     
-    eth = (const struct eth_header *)packet;
     ip = (const struct ip_header *)(packet + sizeof(struct eth_header));
     tcp = (const struct tcp_header *)(packet + sizeof(struct eth_header) + sizeof(struct ip_header));
     

@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* IDT gate setup - exposed for syscall layer (trap gate DPL3) */
+void idt_set_gate(uint8_t num, uint32_t base, uint8_t flags);
+
 /* Kernel version */
 #define TINK_VERSION_MAJOR 0
 #define TINK_VERSION_MINOR 1

@@ -7,9 +7,6 @@
 static struct gdt_entry gdt[5];
 static struct gdt_ptr gp;
 
-/* External assembly functions */
-extern void gdt_flush(void);
-
 static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
     gdt[num].base_low = base & 0xFFFF;
     gdt[num].base_middle = (base >> 16) & 0xFF;
@@ -40,15 +37,15 @@ void gdt_init(void) {
     /* User data segment: base=0, limit=4GB, writable, present, ring 3 */
     gdt_set_gate(4, 0, 0xFFFFFFFF, 0xF2, 0xCF);
     
-    /* Load GDT using inline assembly */
-    asm volatile ("lgdtl %0" :: "m"(gp));
-    
-    /* Reload segment registers - use simpler syntax */
+    /* Load GDT using inline assembly - lgdt (not lgdtl) with memory clobber */
+    asm volatile ("lgdt %0" :: "m"(gp) : "memory");
+
+    /* Reload segment registers via far jump (gdt_flush style) */
     __asm__ __volatile__ (
         "pushl $0x08\n\t"
         "leal 1f, %%eax\n\t"
         "pushl %%eax\n\t"
-        "lret\n\t"
+        "lret\n\t"              /* far return pops CS:EIP */
         "1:\n\t"
         "movw $0x10, %%ax\n\t"
         "movw %%ax, %%ds\n\t"

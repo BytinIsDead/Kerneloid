@@ -36,6 +36,9 @@ struct mouse_state {
     int buttons;            /* Current button state */
     int present;            /* Mouse is present */
     int type;               /* Mouse type */
+    int hidden;             /* Hidden flag */
+    int min_x, max_x;       /* Bounds */
+    int min_y, max_y;
     
     /* Callback for mouse events */
     void (*event_handler)(struct mouse_event*);
@@ -72,5 +75,18 @@ void mouse_set_handler(struct mouse_state* state,
 
 /* Poll mouse (call from main loop) */
 void mouse_poll(struct mouse_state* state);
+
+/* Hide/show cursor */
+void mouse_hide(struct mouse_state* state);
+void mouse_show(struct mouse_state* state);
+
+/* Bounds */
+void mouse_set_bounds(struct mouse_state* state, int min_x, int max_x, int min_y, int max_y);
+
+/* Shared PS/2 controller init (handles keyboard+mouse without conflict) */
+int ps2_controller_init(void);
+
+/* Helpers that operate on default global state if null */
+void mouse_get_pos_global(int *x, int *y);
 
 #endif /* MOUSE_H */

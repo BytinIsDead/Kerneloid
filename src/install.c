@@ -286,9 +286,7 @@ int install_write_sectors(int disk_num, uint32_t start_lba, const void *data, si
         }
         
         serial_write_str("Install: Wrote sector ");
-        /* Print sector number */
-        uint32_t n = start_lba + i;
-        char hex[] = "0123456789ABCDEF";
+        uint32_t n = start_lba + (uint32_t)i;
         serial_write_hex32(n);
         serial_writeln("");
     }

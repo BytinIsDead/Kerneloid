@@ -5,10 +5,17 @@
 
 /* VGA text mode I/O functions */
 void io_init(void);
+void vga_clear(void);
 void io_putchar(char c);
 void io_print(const char* str);
 void io_println(const char* str);
 char io_getchar(void);  /* Read character from keyboard */
+
+/* Special keycodes beyond ASCII (returned by io_getchar) */
+#define KEY_UP      0x01
+#define KEY_DOWN    0x02
+#define KEY_LEFT    0x03
+#define KEY_RIGHT   0x04
 
 /* Port I/O functions */
 static inline void outb(uint16_t port, uint8_t value) {

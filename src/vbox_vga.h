@@ -61,6 +61,9 @@ typedef struct {
 #define VBE_MODE_800x600x24     0x11B
 #define VBE_MODE_1024x768x24    0x11E
 #define VBE_MODE_1280x1024x24   0x142
+#define VGA_MODE_13            0x13  /* 320x200 256-color (VGA) */
+#define VGA_FB_MODE13          0xA0000
+#define VGA_TEXT_FB            0xB8000
 
 /* VGA driver state */
 typedef struct {
@@ -86,16 +89,38 @@ kern_return_t vga_set_mode(uint16_t mode);
 kern_return_t vga_get_mode_info(uint16_t mode, vbe_mode_info_t* info);
 void vga_putchar(char c);
 void vga_puts(const char* str);
-void vga_clear(void);
+void vga_clear(void); /* provided by io.c - text mode */
+void vga_clear_gfx(void); /* graphics mode clear */
 void vga_set_color(uint8_t fg, uint8_t bg);
 void vga_set_cursor(uint16_t x, uint16_t y);
 void vga_scroll(void);
+void vga_scroll_fast(void);
 
-/* Graphics primitives */
+/* Graphics primitives - optimized inline helpers */
+static inline uint32_t vga_calc_offset(uint16_t x, uint16_t y, uint16_t pitch, uint8_t bpp){
+    return (uint32_t)y * pitch + (uint32_t)x * (bpp / 8);
+}
+static inline uint32_t vga_calc_offset_mode13(uint16_t x, uint16_t y){
+    return (uint32_t)y * 320 + x;
+}
 void vga_draw_pixel(uint16_t x, uint16_t y, uint32_t color);
 uint32_t vga_read_pixel(uint16_t x, uint16_t y);
+void vga_draw_pixel_fast(uint16_t x, uint16_t y, uint32_t color);
 void vga_draw_line(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint32_t color);
+void vga_draw_hline(uint16_t x, uint16_t y, uint16_t w, uint32_t color);
+void vga_draw_vline(uint16_t x, uint16_t y, uint16_t h, uint32_t color);
 void vga_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
+void vga_fill_rect_fast(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
 void vga_blit(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* data);
+void vga_blit_fast(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* data);
+
+/* Double buffering */
+kern_return_t vga_enable_double_buffer(void);
+void vga_disable_double_buffer(void);
+void vga_flip(void);
+uint8_t* vga_get_backbuffer(void);
+boolean_t vga_is_double_buffered(void);
+void* vga_get_framebuffer(void);
+void vga_get_size(uint16_t *w, uint16_t *h);
 
 #endif /* VBOX_VGA_H */

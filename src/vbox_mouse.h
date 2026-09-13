@@ -50,7 +50,7 @@ typedef struct {
     void (*on_button)(uint8_t buttons);
 } ps2_mouse_t;
 
-/* Function prototypes */
+/* Function prototypes (deprecated wrapper -> unified mouse.c) */
 kern_return_t ps2_mouse_init(void);
 kern_return_t ps2_mouse_enable(void);
 kern_return_t ps2_mouse_disable(void);
@@ -58,5 +58,12 @@ void ps2_mouse_handler(uint8_t data);
 void ps2_mouse_get_state(int16_t* x, int16_t* y, uint8_t* buttons);
 void ps2_mouse_set_callback(void (*move_cb)(int16_t, int16_t), 
                             void (*button_cb)(uint8_t));
+
+/* New unified wrappers - prefer mouse.h directly */
+void ps2_mouse_hide(void);
+void ps2_mouse_show(void);
+void ps2_mouse_get_position(int *x, int *y);
+void ps2_mouse_set_bounds(int min_x, int max_x, int min_y, int max_y);
+int ps2_mouse_is_present(void);
 
 #endif /* VBOX_MOUSE_H */

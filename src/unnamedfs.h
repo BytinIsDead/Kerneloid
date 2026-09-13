@@ -70,6 +70,23 @@ ssize_t unamedfs_write(int fd, const void *buf, size_t count);
 off_t unamedfs_lseek(int fd, off_t offset, int whence);
 int unamedfs_mkdir(struct unamedfs_mount *mnt, const char *path);
 int unamedfs_unlink(struct unamedfs_mount *mnt, const char *path);
+int unamedfs_rmdir(struct unamedfs_mount *mnt, const char *path);
+int unamedfs_create(struct unamedfs_mount *mnt, const char *path);
 int unamedfs_stat(const char *path, void *stat_buf);
+
+/* Correct spelling aliases (compatibility) */
+int unnamedfs_format(void *device, size_t size);
+int unnamedfs_mount(struct unamedfs_mount *mnt, void *device, size_t size);
+int unnamedfs_unmount(struct unamedfs_mount *mnt);
+int unnamedfs_open(struct unamedfs_mount *mnt, const char *path, int flags);
+int unnamedfs_close(int fd);
+ssize_t unnamedfs_read(int fd, void *buf, size_t count);
+ssize_t unnamedfs_write(int fd, const void *buf, size_t count);
+off_t unnamedfs_lseek(int fd, off_t offset, int whence);
+int unnamedfs_mkdir(struct unamedfs_mount *mnt, const char *path);
+int unnamedfs_unlink(struct unamedfs_mount *mnt, const char *path);
+int unnamedfs_rmdir(struct unamedfs_mount *mnt, const char *path);
+int unnamedfs_create(struct unamedfs_mount *mnt, const char *path);
+int unnamedfs_stat(const char *path, void *stat_buf);
 
 #endif /* UNNAMEDFS_H */

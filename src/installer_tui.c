@@ -450,6 +450,7 @@ void tui_handle_arrow_down(struct tui_context* ctx) {
 }
 
 void tui_handle_key(struct tui_context* ctx, char key) {
+    (void)ctx;
     (void)key;
     /* Default: no special handling */
 }

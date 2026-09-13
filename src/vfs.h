@@ -150,4 +150,8 @@ struct vfs_context *vfs_get_current_context(void);
 /* Register filesystem type */
 int vfs_register_fs(const char *name, struct vfs_mops *ops);
 
+/* AHCI integration */
+struct ahci_controller;
+int vfs_mount_ahci(const char *path, struct ahci_controller *ctrl, int port);
+
 #endif /* VFS_H */

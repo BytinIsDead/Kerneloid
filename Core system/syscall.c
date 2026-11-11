@@ -10,6 +10,8 @@
 #include "io.h"
 #include "serial.h"
 #include "vfs.h"
+#include "elf.h"
+#include "gdt.h"
 #include "xnu_memory.h"
 #include "kernel.h" /* for idt_set_gate */
 #include <stdint.h>
@@ -277,6 +279,66 @@ static int32_t handle_mkdir(regs_t *regs) {
     return vfs_mkdir(path);
 }
 
+static int32_t handle_unlink(regs_t *regs) {
+    uint32_t path_ptr = regs->ebx;
+    if (path_ptr == 0) return -1;
+    const char *path = (const char*)(uintptr_t)path_ptr;
+    if ((uintptr_t)path < 0x1000) return -1;
+    return vfs_unlink(path);
+}
+
+static int32_t handle_rmdir(regs_t *regs) {
+    uint32_t path_ptr = regs->ebx;
+    if (path_ptr == 0) return -1;
+    const char *path = (const char*)(uintptr_t)path_ptr;
+    if ((uintptr_t)path < 0x1000) return -1;
+    return vfs_rmdir(path);
+}
+
+static int32_t handle_creat(regs_t *regs) {
+    uint32_t path_ptr = regs->ebx;
+    if (path_ptr == 0) return -1;
+    const char *path = (const char*)(uintptr_t)path_ptr;
+    if ((uintptr_t)path < 0x1000) return -1;
+    return vfs_create(path);
+}
+
+static int32_t handle_chdir(regs_t *regs) {
+    uint32_t path_ptr = regs->ebx;
+    if (path_ptr == 0) return -1;
+    const char *path = (const char*)(uintptr_t)path_ptr;
+    if ((uintptr_t)path < 0x1000) return -1;
+    struct vfs_stat st;
+    if (vfs_stat(path, &st) == 0 && st.type == VFS_TYPE_DIR) return 0;
+    return -1;
+}
+
+extern uint64_t pit_get_ticks(void);
+
+static int32_t handle_set_thread_area(regs_t *regs) {
+    uint32_t udesc_ptr = regs->ebx;
+    if (udesc_ptr == 0 || udesc_ptr < 0x1000) return -1;
+    /* user_desc layout: entry_number, base_addr, limit, then bitfields */
+    uint32_t *ud = (uint32_t*)(uintptr_t)udesc_ptr;
+    uint32_t base = ud[1];
+    /* set entry_number to 6 */
+    ud[0] = 6;
+    gdt_set_tls(base);
+    return 0;
+}
+static int32_t handle_mmap2(regs_t *regs) {
+    uint32_t len = regs->ecx;
+    if (len == 0) return -1;
+    void *p = kmalloc(len);
+    return (int32_t)(uintptr_t)p;
+}
+static int32_t handle_munmap(regs_t *regs) { (void)regs; return 0; }
+static int32_t handle_rt_sigprocmask(regs_t *regs) { (void)regs; return 0; }
+static int32_t handle_sched_setaffinity(regs_t *regs) { (void)regs; return 0; }
+static int32_t handle_set_tid_address(regs_t *regs) { (void)regs; return 1; /* tid */ }
+static int32_t handle_exit_group(regs_t *regs) { (void)regs; return 0; }
+static int32_t handle_futex(regs_t *regs) { (void)regs; return 0; }
+
 /* Simple kmalloc wrapper for syscall */
 static __attribute__((unused)) int32_t handle_kmalloc(regs_t *regs) {
     uint32_t size = regs->ebx;
@@ -303,6 +365,19 @@ int32_t syscall_handler(regs_t *regs) {
         case SYS_BRK:       ret = handle_brk(regs); break;
         case SYS_SBRK:      ret = handle_sbrk(regs); break;
         case SYS_MKDIR:     ret = handle_mkdir(regs); break;
+        case SYS_UNLINK:    ret = handle_unlink(regs); break;
+        case SYS_RMDIR:     ret = handle_rmdir(regs); break;
+        case SYS_CREAT:     ret = handle_creat(regs); break;
+        case SYS_CHDIR:     ret = handle_chdir(regs); break;
+        case SYS_TIME:      ret = (int32_t)pit_get_ticks(); break;
+        case SYS_MMAP2:     ret = handle_mmap2(regs); break;
+        case SYS_MUNMAP:    ret = handle_munmap(regs); break;
+        case SYS_SET_THREAD_AREA: ret = handle_set_thread_area(regs); break;
+        case SYS_SCHED_SETAFFINITY: ret = handle_sched_setaffinity(regs); break;
+        case SYS_RT_SIGPROCMASK: ret = handle_rt_sigprocmask(regs); break;
+        case SYS_SET_TID_ADDRESS: ret = handle_set_tid_address(regs); break;
+        case SYS_EXIT_GROUP: ret = handle_exit_group(regs); break;
+        case SYS_FUTEX: ret = handle_futex(regs); break;
         case SYS_YIELD:     ret = handle_yield(regs); break;
         case SYS_IPC_SEND:  ret = handle_ipc_send(regs); break;
         case SYS_IPC_RECV:  ret = handle_ipc_recv(regs); break;
@@ -315,14 +390,14 @@ int32_t syscall_handler(regs_t *regs) {
             serial_writeln("[SYSCALL] fork not implemented");
             ret = -1;
             break;
-        case SYS_EXECVE:
-            serial_writeln("[SYSCALL] execve not implemented");
-            ret = -1;
+        case SYS_EXECVE: {
+            uint32_t path_ptr = regs->ebx;
+            if (path_ptr == 0) { ret = -1; break; }
+            const char *path = (const char*)(uintptr_t)path_ptr;
+            if ((uintptr_t)path < 0x1000) { ret = -1; break; }
+            ret = elf_exec(path);
             break;
-        case SYS_UNLINK:
-            serial_writeln("[SYSCALL] unlink stub");
-            ret = -1;
-            break;
+        }
         default:
             serial_write_str("[SYSCALL] unknown syscall #");
             serial_write_dec32(num);
@@ -330,7 +405,7 @@ int32_t syscall_handler(regs_t *regs) {
             serial_write_str(" ebx=0x"); serial_write_hex32(regs->ebx);
             serial_write_str(" ecx=0x"); serial_write_hex32(regs->ecx);
             serial_writeln("");
-            ret = -1; /* ENOSYS */
+            ret = 0; /* ENOSYS: allow musl progress */
             break;
     }
 

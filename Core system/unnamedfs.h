@@ -32,12 +32,16 @@ struct unamedfs_superblock {
 struct unamedfs_inode {
     uint32_t ino;
     uint32_t size;
-    uint32_t flags;      /* 0x1 = file, 0x2 = directory */
+    uint32_t flags;      /* 0x1 = file, 0x2 = directory, 0x4 = symlink, 0x8 = device */
     uint32_t parent;     /* parent inode (for directories) */
     uint32_t first_block;
     uint32_t blocks;
+    uint32_t mode;       /* permission bits */
+    uint32_t uid;
+    uint32_t gid;
     char name[UNAMEDFS_FILENAME_LEN];
-    uint8_t reserved[4096 - 80];
+    char link_target[256];
+    uint8_t reserved[4096 - 88 - 256 - 12];
 } __attribute__((packed));
 
 /* File descriptor */

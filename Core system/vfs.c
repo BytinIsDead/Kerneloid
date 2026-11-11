@@ -13,6 +13,7 @@
 
 #include "vfs.h"
 #include "io.h"
+#include "serial.h"
 #include "ahci.h"
 #include "unnamedfs.h"
 #include "lib_string.h"
@@ -191,7 +192,10 @@ static struct vfs_node *inode_to_vnode(struct unamedfs_inode *inode) {
     if (!inode) return 0;
     if (inode->ino >= UNAMEDFS_MAX_FILES) return 0;
     struct vfs_node *vnode = &nodes[inode->ino];
-    vnode->type = (inode->flags & 0x2) ? VFS_TYPE_DIR : VFS_TYPE_FILE;
+    if (inode->flags & 0x4) vnode->type = VFS_TYPE_SYMLINK;
+    else if (inode->flags & 0x8) vnode->type = VFS_TYPE_DEVICE;
+    else if (inode->flags & 0x2) vnode->type = VFS_TYPE_DIR;
+    else vnode->type = VFS_TYPE_FILE;
     vnode->data = inode;
     vnode->id = inode->ino;
     vnode->mount = &root_mount;
@@ -220,7 +224,18 @@ static int unnamedfs_vop_close(struct vfs_file *file) {
 static ssize_t unnamedfs_vop_read(struct vfs_file *file, void *buf, size_t count, size_t offset) {
     if (!file || !buf) return -1;
     struct unamedfs_inode *inode = (struct unamedfs_inode *)file->node->data;
-    if (!inode || (inode->flags & 0x2)) return -1;
+    if (!inode) return -1;
+    if (inode->flags & 0x8) {
+        /* device */
+        uint32_t dev = inode->first_block;
+        if (dev == 0) return 0; /* /dev/null: EOF */
+        if (dev == 2) { /* /dev/zero */
+            lib_memset(buf, 0, count);
+            return (ssize_t)count;
+        }
+        return 0;
+    }
+    if (inode->flags & 0x2) return -1; /* directory */
     if (offset >= inode->size) return 0;
     if (count > inode->size - offset) count = inode->size - offset;
     if (inode->blocks==0) return 0;
@@ -235,7 +250,18 @@ static ssize_t unnamedfs_vop_read(struct vfs_file *file, void *buf, size_t count
 static ssize_t unnamedfs_vop_write(struct vfs_file *file, const void *buf, size_t count, size_t offset) {
     if (!file || !buf) return -1;
     struct unamedfs_inode *inode = (struct unamedfs_inode *)file->node->data;
-    if (!inode || (inode->flags & 0x2)) return -1;
+    if (!inode) return -1;
+    if (inode->flags & 0x8) {
+        uint32_t dev = inode->first_block;
+        if (dev == 1) { /* /dev/console */
+            for (size_t i = 0; i < count; i++) {
+                io_putchar(((const char*)buf)[i]);
+                serial_write_byte((uint8_t)((const char*)buf)[i]);
+            }
+        }
+        return (ssize_t)count; /* discard for null/zero/console */
+    }
+    if (inode->flags & 0x2) return -1; /* directory */
 
     /* Ensure blocks allocation for offset+count (replicates ensure_blocks logic at VFS layer for consistency)
        For simplicity we reuse unamedfs logic: we need to grow if needed. But we cannot call ensure_blocks directly
@@ -464,8 +490,9 @@ static int unnamedfs_vop_stat(struct vfs_node *node, struct vfs_stat *stat_buf) 
     stat_buf->type = node->type;
     stat_buf->size = inode->size;
     stat_buf->blocks = inode->blocks;
-    stat_buf->mode = VFS_MODE_READ | VFS_MODE_WRITE;
-    stat_buf->uid = 0; stat_buf->gid=0;
+    stat_buf->mode = inode->mode ? inode->mode : (VFS_MODE_READ | VFS_MODE_WRITE);
+    stat_buf->uid = inode->uid;
+    stat_buf->gid = inode->gid;
     stat_buf->atime=0; stat_buf->mtime=0; stat_buf->ctime=0;
     return 0;
 }
@@ -629,6 +656,26 @@ int vfs_init(void) {
     unamedfs_mkdir(&unnamedfs_mnt, "/tmp");
     /* Ensure vnodes for those dirs are instantiated */
     vfs_unlock();
+    /* Create /dev and device nodes */
+    vfs_mkdir("/dev");
+    vfs_create("/dev/null");
+    vfs_create("/dev/zero");
+    vfs_create("/dev/console");
+    {
+        struct vfs_node *n;
+        if (vfs_lookup("/dev/null", &n) == 0 && n->data) {
+            struct unamedfs_inode *in = (struct unamedfs_inode *)n->data;
+            in->flags = 0x8; in->first_block = 0; in->mode = 0666;
+        }
+        if (vfs_lookup("/dev/zero", &n) == 0 && n->data) {
+            struct unamedfs_inode *in = (struct unamedfs_inode *)n->data;
+            in->flags = 0x8; in->first_block = 2; in->mode = 0666;
+        }
+        if (vfs_lookup("/dev/console", &n) == 0 && n->data) {
+            struct unamedfs_inode *in = (struct unamedfs_inode *)n->data;
+            in->flags = 0x8; in->first_block = 1; in->mode = 0666;
+        }
+    }
     return 0;
 }
 
@@ -921,6 +968,64 @@ int vfs_mkdir(const char *path) {
     vfs_unlock();
     return rc;
 }
+int vfs_create(const char *path) {
+    if (!path || *path=='\0') return -1;
+    char norm[VFS_MAX_PATH];
+    { size_t j=0; int last=0; for (size_t i=0; path[i] && j+1<VFS_MAX_PATH;i++){ char c=path[i]; if(c=='/'){ if(j==0){norm[j++]='/'; last=1;} else if(!last){norm[j++]='/'; last=1;}} else {norm[j++]=c; last=0;}} if(j>1&&norm[j-1]=='/'){j--;} norm[j]='\0'; if(j==0){norm[0]='/';norm[1]='\0';}}
+    if (lib_strcmp(norm, "/")==0) return -1;
+    struct vfs_node *existing=0;
+    if (vfs_lookup(norm, &existing)==0) return -1; /* already exists */
+    char parent_path[VFS_MAX_PATH], name[VFS_MAX_NAME];
+    {
+        char tmp[VFS_MAX_PATH]; lib_strncpy(tmp, norm, VFS_MAX_PATH);
+        size_t len=lib_strlen(tmp);
+        while(len>1 && tmp[len-1]=='/'){tmp[len-1]='\0'; len--;}
+        char *last=0; for(size_t i=0; tmp[i]; i++) if(tmp[i]=='/') last=&tmp[i];
+        if(!last){ lib_strcpy(parent_path, "/"); lib_strncpy(name, tmp, VFS_MAX_NAME);}
+        else if(last==tmp){ lib_strcpy(parent_path, "/"); lib_strncpy(name, last+1, VFS_MAX_NAME);}
+        else {*last='\0'; lib_strncpy(parent_path, tmp, VFS_MAX_PATH); lib_strncpy(name, last+1, VFS_MAX_NAME);}
+        name[VFS_MAX_NAME-1]='\0';
+    }
+    struct vfs_node *parent=0;
+    if (vfs_lookup(parent_path, &parent)!=0) return -1;
+    if (!parent || parent->type != VFS_TYPE_DIR) return -1;
+    if (!parent->ops || !parent->ops->create) return -1;
+    vfs_lock();
+    int rc = parent->ops->create(parent, name, VFS_TYPE_FILE);
+    if (rc==0) {
+        dcache_invalidate(norm);
+        rdcache.valid=0;
+    }
+    vfs_unlock();
+    return rc;
+}
+
+int vfs_symlink(const char *target, const char *path) {
+    if (!target || !path) return -1;
+    if (vfs_create(path) != 0) return -1;
+    struct vfs_node *node = 0;
+    if (vfs_lookup(path, &node) != 0) return -1;
+    struct unamedfs_inode *inode = (struct unamedfs_inode *)node->data;
+    if (!inode) return -1;
+    inode->flags = 0x4;
+    lib_strncpy(inode->link_target, target, 256);
+    inode->link_target[255] = '\0';
+    inode->mode = 0777;
+    return 0;
+}
+
+int vfs_readlink(const char *path, char *buf, size_t size) {
+    if (!path || !buf || size == 0) return -1;
+    struct vfs_node *node = 0;
+    if (vfs_lookup(path, &node) != 0) return -1;
+    if (node->type != VFS_TYPE_SYMLINK) return -1;
+    struct unamedfs_inode *inode = (struct unamedfs_inode *)node->data;
+    if (!inode) return -1;
+    lib_strncpy(buf, inode->link_target, size);
+    buf[size-1] = '\0';
+    return 0;
+}
+
 int vfs_unlink(const char *path) {
     if (!path || *path=='\0') return -1;
     char norm[VFS_MAX_PATH];

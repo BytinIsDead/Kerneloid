@@ -33,5 +33,6 @@ struct gdt_ptr {
 
 /* Initialize the GDT */
 void gdt_init(void);
+void gdt_set_tls(uint32_t base);
 
 #endif /* GDT_H */

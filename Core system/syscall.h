@@ -43,7 +43,15 @@ typedef enum {
     SYS_IPC_CREATE_PORT = 203,
     SYS_IPC_DESTROY_PORT = 204,
     SYS_GETTID      = 205,
-    SYS_SLEEP       = 162
+    SYS_SLEEP       = 162,
+    SYS_MMAP2       = 192,
+    SYS_MUNMAP      = 91,
+    SYS_SET_THREAD_AREA = 243,
+    SYS_SCHED_SETAFFINITY = 241,
+    SYS_RT_SIGPROCMASK = 175,
+    SYS_SET_TID_ADDRESS = 258,
+    SYS_EXIT_GROUP = 252,
+    SYS_FUTEX = 240
 } syscall_num_t;
 
 /* -------------------------------------------------------------

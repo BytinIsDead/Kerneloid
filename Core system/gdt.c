@@ -4,7 +4,7 @@
 
 #include "gdt.h"
 
-static struct gdt_entry gdt[5];
+static struct gdt_entry gdt[7];
 static struct gdt_ptr gp;
 
 static void gdt_set_gate(int num, uint32_t base, uint32_t limit, uint8_t access, uint8_t gran) {
@@ -55,4 +55,9 @@ void gdt_init(void) {
         "movw %%ax, %%ss\n\t"
         ::: "eax", "memory"
     );
+}
+
+void gdt_set_tls(uint32_t base) {
+    /* Use GDT entry 6 for TLS */
+    gdt_set_gate(6, base, 0xFFFFFFFF, 0xF2, 0xCF);
 }

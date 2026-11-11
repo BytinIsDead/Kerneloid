@@ -376,3 +376,87 @@ void hal_register_syscall(uint8_t vector, uint32_t handler_addr, uint8_t flags) 
     serial_write_hex8(flags);
     serial_writeln("");
 }
+
+/* ------------------------------------------------------------------
+ * RTC (CMOS) real-time clock
+ * Ports 0x70/0x71, standard Motorola/BCD layout. Waits out the
+ * update-in-progress flag so we never read torn values.
+ * ------------------------------------------------------------------ */
+#define RTC_ADDR_REG  0x70
+#define RTC_DATA_REG  0x71
+
+static uint8_t rtc_read_reg(uint8_t reg) {
+    hal_outb(RTC_ADDR_REG, reg);
+    return hal_inb(RTC_DATA_REG);
+}
+
+static int rtc_update_in_progress(void) {
+    return rtc_read_reg(0x0A) & 0x80;
+}
+
+static uint8_t rtc_bcd(uint8_t v, uint8_t regb) {
+    if (regb & 0x04) return v;              /* binary mode */
+    return (uint8_t)((v & 0x0F) + (v >> 4) * 10);
+}
+
+int rtc_read_datetime(rtc_datetime_t *out) {
+    if (!out) return -1;
+    uint8_t century = 20;
+    uint8_t last, sec, min, hour, day, month, year;
+
+    /* Re-read until two consecutive consistent snapshots */
+    while (rtc_update_in_progress()) { }
+    sec   = rtc_read_reg(0x00);
+    min   = rtc_read_reg(0x02);
+    hour  = rtc_read_reg(0x04);
+    day   = rtc_read_reg(0x07);
+    month = rtc_read_reg(0x08);
+    year  = rtc_read_reg(0x09);
+    do {
+        last = sec;
+        while (rtc_update_in_progress()) { }
+        sec   = rtc_read_reg(0x00);
+        min   = rtc_read_reg(0x02);
+        hour  = rtc_read_reg(0x04);
+        day   = rtc_read_reg(0x07);
+        month = rtc_read_reg(0x08);
+        year  = rtc_read_reg(0x09);
+    } while (sec != last);
+
+    uint8_t regb = rtc_read_reg(0x0B);
+    out->second = rtc_bcd(sec, regb);
+    out->minute = rtc_bcd(min, regb);
+    out->day    = rtc_bcd(day, regb);
+    out->month  = rtc_bcd(month, regb);
+    out->year   = rtc_bcd(year, regb);
+
+    /* 12-hour clock: PM adds 12 (12 PM stays 12, 12 AM is 0) */
+    if (!(regb & 0x02) && (hour & 0x80)) {
+        hour = (uint8_t)((hour & 0x7F) + 12);
+        if (hour == 24) hour = 12;
+    }
+    out->hour = rtc_bcd(hour, regb);
+
+    /* Century register (0x32) if the RTC exports one */
+    uint8_t cent = rtc_read_reg(0x32);
+    if (cent >= 19 && cent <= 21) century = rtc_bcd(cent, regb);
+    out->year += century * 100;
+    return 0;
+}
+
+/* ------------------------------------------------------------------
+ * Reboot via the 8042 keyboard controller (pulse CPU reset line)
+ * ------------------------------------------------------------------ */
+void hal_reboot(void) {
+    hal_cli();
+    /* Flush the 8042 output buffer first */
+    for (int i = 0; i < 100000; i++) {
+        if (hal_inb(0x64) & 0x01) (void)hal_inb(0x60);
+    }
+    hal_io_wait();
+    hal_outb(0x64, 0xFE);   /* pulse reset */
+    /* Fallback: triple-fault if 8042 reset was ignored */
+    struct { uint16_t len, base; } __attribute__((packed)) idtr = { 0, 0 };
+    asm volatile("lidt %0; int3" :: "m"(idtr));
+    __builtin_unreachable();
+}

@@ -134,6 +134,9 @@ vfs_off_t vfs_lseek(int fd, vfs_off_t offset, int whence);
 
 /* Directory operations */
 int vfs_mkdir(const char *path);
+int vfs_create(const char *path);
+int vfs_symlink(const char *target, const char *path);
+int vfs_readlink(const char *path, char *buf, size_t size);
 int vfs_rmdir(const char *path);
 int vfs_unlink(const char *path);
 int vfs_readdir(int fd, char *name, size_t name_size);

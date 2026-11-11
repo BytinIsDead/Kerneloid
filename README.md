@@ -1,6 +1,6 @@
-# Tinx Kernel — Handsome Dorito v1.1 (Subagents Overhaul)
+# Tinx Kernel — Handsome Dorito v1.3 (Alpine-inspired)
 
-A minimal educational kernel turned modular XNU-inspired OS, now with preemptive scheduling, IPC, syscalls, and a real VFS.
+A minimal educational kernel turned modular XNU-inspired OS, now with preemptive scheduling, IPC, syscalls, a real VFS, and an Alpine Linux-inspired userland layer (musl libc compatibility + apk-style package manager).
 
 ## Overview
 
@@ -10,6 +10,11 @@ Tinx v1.1 is the result of a 5-crew parallel subagent overhaul (~7K lines change
 - **Task Control** `tcb.c/h` 256-task pool, runqueue, 8KB stacks, `tcb_create/yield/block/sleep`
 - **Communication** `ipc.c/h` 128 ports x16 queue, task mailboxes, `ipc_send/recv/reply` sync/NONBLOCK
 - **Hardware Abstraction** `hal.c/h` PIC/PIT 100Hz, `hal_context_switch_asm` in `boot.asm:286`, CPUID
+
+**New in v1.3:**
+- **musl libc compat** `src/musl.h`/`src/musl.c` freestanding-friendly libc subset (malloc, printf, stdio, string ops)
+- **pkg package manager** `pkg` shell command: init/update/add/del/list/search/info/world with `/var/lib/pkg` database (not Alpine apk)
+- **VFS create** `vfs_create` enables file creation in `touch`, `cp`, and package installation
 
 **New in v1.1:**
 - **HAL + Scheduler** `hal.c:141` PIT 1193182/100, `scheduler_init` priority slices 2/10/20/30, trampoline
@@ -66,7 +71,8 @@ src/
 ## Shell Demo
 ```
 tinx:/>
-help                 # list 29 cmds
+help                 # list commands (now includes apk, musl)
+pkg init; pkg add hello; pkg list; pkg world
 ls /home
 mkdir /home/test; touch /home/test/a.txt; write /home/test/a.txt "Hello"
 cat /home/test/a.txt; hexdump /home/test/a.txt; stat /home/test/a.txt

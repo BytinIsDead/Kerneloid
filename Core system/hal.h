@@ -82,4 +82,18 @@ int hal_has_isr(uint32_t vector);
 uint32_t hal_get_cpu_vendor(char* buffer);
 uint32_t hal_get_cpu_features(void);
 
+/* RTC (CMOS) real-time clock */
+typedef struct rtc_datetime {
+    int second;   /* 0-59 */
+    int minute;   /* 0-59 */
+    int hour;     /* 0-23 */
+    int day;      /* 1-31 */
+    int month;    /* 1-12 */
+    int year;     /* full year, e.g. 2026 */
+} rtc_datetime_t;
+int rtc_read_datetime(rtc_datetime_t *out);
+
+/* Reboot the machine via the 8042 keyboard controller */
+void hal_reboot(void);
+
 #endif /* HAL_H */

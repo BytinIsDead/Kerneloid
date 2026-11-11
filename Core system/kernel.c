@@ -536,10 +536,10 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     io_println("IRQ vectors 32-47 ready (PIC remapped 0x20-0x2F).");
     serial_writeln("IRQ vectors 32-47 ready");
 
-    /* IPC/Syscall still disabled for now - will re-enable after HAL test */
-    serial_writeln("[BOOT] Skipping IPC/Syscall for now");
-    // ipc_init();
-    // syscall_init();
+    /* Enable syscall layer (Alpine-style minimal libc support) */
+    serial_writeln("[BOOT] Initializing syscall layer...");
+    syscall_init();
+    io_println("Syscall layer initialized (int 0x80).");
     
     /* Initialize VFS subsystem */
     vfs_init();
@@ -622,6 +622,7 @@ void kernel_main(uint32_t magic, uint32_t* mboot_info) {
     g_shell_current = &state;
     serial_writeln("[BOOT] shell_run...");
     shell_run(&state);
+    /* ELF compatibility available via elfexec/elftest commands */
     serial_writeln("[BOOT] shell_run done");
     
     char prompt[128];
